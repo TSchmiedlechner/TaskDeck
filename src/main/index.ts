@@ -5,6 +5,8 @@ import { Store } from './store'
 import { Brain } from './brain'
 import { Scheduler } from './scheduler'
 import { OutlookSync } from './outlook'
+import { GithubSync } from './connectors/github'
+import { JiraSync } from './connectors/jira'
 import { registerIpc } from './ipc'
 import { createCaptureWindow, createDeckWindow, positionCaptureWindow } from './windows'
 
@@ -36,6 +38,8 @@ if (!gotLock) {
     const outlook = new OutlookSync(store, broadcast, (prompt) => {
       deckWin?.webContents.send('outlook-devicecode', prompt)
     })
+    const github = new GithubSync(store, broadcast)
+    const jira = new JiraSync(store, broadcast)
 
     deckWin = createDeckWindow(settings.privacyMode)
     captureWin = createCaptureWindow(settings.privacyMode)
@@ -102,6 +106,8 @@ if (!gotLock) {
       brain,
       scheduler,
       outlook,
+      github,
+      jira,
       broadcast,
       openCapture,
       closeCapture,
@@ -110,13 +116,19 @@ if (!gotLock) {
       applyLaunchAtLogin
     })
 
-    // Resume mail/calendar sync when a cached Outlook session exists.
+    // Resume connector syncs for whatever is already configured.
     void outlook.state().then((s) => {
       if (s.signedIn) {
         outlook.start()
         void outlook.syncNow()
       }
     })
+    for (const sync of [github, jira]) {
+      if (sync.state().configured) {
+        sync.start()
+        void sync.syncNow()
+      }
+    }
 
     if (!applyHotkey(settings.captureHotkey)) {
       store.logActivity(null, 'system', `Could not register hotkey "${settings.captureHotkey}" — is another app using it?`)
@@ -152,6 +164,8 @@ if (!gotLock) {
       globalShortcut.unregisterAll()
       scheduler.stop()
       outlook.stop()
+      github.stop()
+      jira.stop()
       tray?.destroy()
     })
   })

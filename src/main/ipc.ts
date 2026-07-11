@@ -3,8 +3,12 @@ import type { Store } from './store'
 import type { Brain } from './brain'
 import type { Scheduler } from './scheduler'
 import type { OutlookSync } from './outlook'
+import type { GithubSync } from './connectors/github'
+import type { JiraSync } from './connectors/jira'
+import { GITHUB_TOKEN_KV } from './connectors/github'
+import { JIRA_TOKEN_KV } from './connectors/jira'
 import { nextMonday } from './logic'
-import { clearApiKey, setApiKey } from './keystore'
+import { clearApiKey, setApiKey, setEncryptedKv } from './keystore'
 import type { Briefing, DeckState, Item, Settings, StructureProposal } from '@shared/types'
 
 export interface IpcDeps {
@@ -12,6 +16,8 @@ export interface IpcDeps {
   brain: Brain
   scheduler: Scheduler
   outlook: OutlookSync
+  github: GithubSync
+  jira: JiraSync
   broadcast: () => void
   openCapture: () => void
   closeCapture: () => void
@@ -26,6 +32,8 @@ export function registerIpc(deps: IpcDeps): void {
     brain,
     scheduler,
     outlook,
+    github,
+    jira,
     broadcast,
     openCapture,
     closeCapture,
@@ -49,7 +57,9 @@ export function registerIpc(deps: IpcDeps): void {
       keySource: brain.keySource,
       cliAvailable: brain.cliAvailable,
       pendingTriageCount: scheduler.pendingTriageCount(),
-      outlook: await outlook.state()
+      outlook: await outlook.state(),
+      github: github.state(),
+      jira: jira.state()
     }
   })
 
@@ -72,6 +82,18 @@ export function registerIpc(deps: IpcDeps): void {
     if (!item) return
     store.updateItem(id, { completedAt: new Date().toISOString(), bucket: 'done' })
     store.logActivity(id, 'you', `Completed "${item.title}"`)
+    // v3 write-back (opt-in): completing a mail-born item marks the mail read in Outlook.
+    if (store.getSettings().writeBackMail && item.source === 'outlook' && item.externalId) {
+      void outlook
+        .markMailRead(item.externalId)
+        .then((ok) =>
+          store.logActivity(
+            id,
+            'system',
+            ok ? 'Marked the mail read in Outlook' : 'Could not mark the mail read in Outlook'
+          )
+        )
+    }
     notifyAndScan()
   })
 
@@ -177,9 +199,27 @@ export function registerIpc(deps: IpcDeps): void {
     broadcast()
   })
 
-  ipcMain.handle('outlook:sync', async () => {
-    await outlook.syncNow()
+  ipcMain.handle('sync:now', async () => {
+    await Promise.all([outlook.syncNow(), github.syncNow(), jira.syncNow()])
     notifyAndScan()
+  })
+
+  ipcMain.handle('connector:setToken', (_e, connector: 'github' | 'jira', token: string) => {
+    const kvKey = connector === 'github' ? GITHUB_TOKEN_KV : JIRA_TOKEN_KV
+    setEncryptedKv(store, kvKey, String(token ?? '').trim())
+    store.logActivity(null, 'you', `${connector} token updated`)
+    const sync = connector === 'github' ? github : jira
+    sync.start()
+    void sync.syncNow().then(() => notifyAndScan())
+    broadcast()
+  })
+
+  ipcMain.handle('connector:clearToken', (_e, connector: 'github' | 'jira') => {
+    const kvKey = connector === 'github' ? GITHUB_TOKEN_KV : JIRA_TOKEN_KV
+    setEncryptedKv(store, kvKey, '')
+    store.logActivity(null, 'you', `${connector} token removed`)
+    ;(connector === 'github' ? github : jira).stop()
+    broadcast()
   })
 
   ipcMain.handle('shell:openExternal', (_e, url: string) => {

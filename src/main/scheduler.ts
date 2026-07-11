@@ -1,6 +1,7 @@
 import type { Store } from './store'
 import type { Brain } from './brain'
 import { findChaseItems, findNowOverflowCandidate, findStaleItems } from './logic'
+import { STRUCTURE_ACTIONS } from './connectors/common'
 import type { Item } from '@shared/types'
 
 /**
@@ -84,11 +85,7 @@ export class Scheduler {
           'structure',
           'ai',
           `“${p.title}” · ${chips}`,
-          [
-            { id: 'accept', label: 'Accept', kind: 'primary' },
-            { id: 'snooze', label: 'Monday', kind: 'ghost' },
-            { id: 'dismiss', label: 'Dismiss', kind: 'danger' }
-          ],
+          STRUCTURE_ACTIONS,
           p as unknown as Record<string, unknown>
         )
         this.store.logActivity(itemId, 'agent', `Proposed: "${p.title}" (${p.type} → ${p.bucket})`)

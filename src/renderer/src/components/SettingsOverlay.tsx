@@ -3,6 +3,82 @@ import type { BrainProviderPref, CostSummary, DeviceCodePrompt } from '@shared/t
 import { MODEL_OPTIONS } from '@shared/types'
 import type { DeckContext } from '../App'
 
+function ConnectorRow({
+  ctx,
+  name,
+  state,
+  hint,
+  placeholder
+}: {
+  ctx: DeckContext
+  name: 'github' | 'jira'
+  state: { configured: boolean; lastSync: string | null; error: string | null }
+  hint: string
+  placeholder: string
+}): React.JSX.Element {
+  const [tokenInput, setTokenInput] = useState('')
+  const save = (): void => {
+    const token = tokenInput.trim()
+    if (!token) return
+    void window.taskdeck.setConnectorToken(name, token).then(() => {
+      setTokenInput('')
+      ctx.showToast(`${name} connected`)
+    })
+  }
+  return (
+    <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: state.configured && !state.error ? 'var(--teal)' : 'var(--text-ghost)',
+            flex: 'none'
+          }}
+        />
+        <span style={{ flex: 1, fontSize: 12 }}>{state.configured ? 'connected' : 'not connected'}</span>
+        <span className="mono" style={{ fontSize: 10, color: state.error ? 'var(--amber)' : 'var(--text-faint)' }}>
+          {state.error
+            ? state.error.slice(0, 40)
+            : state.lastSync
+              ? `synced ${new Date(state.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : ''}
+        </span>
+        {state.configured && (
+          <button
+            className="mini-btn"
+            style={{ color: 'var(--danger-soft)' }}
+            onClick={() =>
+              void window.taskdeck.clearConnectorToken(name).then(() => ctx.showToast(`${name} disconnected`))
+            }
+          >
+            clear
+          </button>
+        )}
+      </div>
+      {!state.configured && (
+        <>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              className="key-input"
+              type="password"
+              placeholder={placeholder}
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+            />
+            <button className="mini-btn" disabled={!tokenInput.trim()} onClick={save}>
+              save
+            </button>
+          </div>
+          <span style={{ fontSize: 10, color: 'var(--text-ghost)', lineHeight: 1.5 }}>{hint}</span>
+        </>
+      )}
+    </div>
+  )
+}
+
 const PROVIDER_OPTIONS: { id: BrainProviderPref; label: string; hint: string }[] = [
   { id: 'auto', label: 'auto', hint: 'CLI when available, else API' },
   { id: 'cli', label: 'cli', hint: 'Claude Code CLI — covered by your Max plan' },
@@ -255,7 +331,7 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
             </span>
             {outlook.signedIn ? (
               <>
-                <button className="mini-btn" onClick={() => void window.taskdeck.outlookSyncNow()}>
+                <button className="mini-btn" onClick={() => void window.taskdeck.syncNow()}>
                   sync
                 </button>
                 <button
@@ -272,6 +348,30 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
               </button>
             )}
           </div>
+          {outlook.signedIn && (
+            <>
+              <div className="setting-row">
+                <span style={{ flex: 1 }}>Teams — chats you owe a reply</span>
+                <button
+                  className="mini-btn"
+                  style={{ color: s.teamsEnabled ? 'var(--teal)' : undefined }}
+                  onClick={() => void window.taskdeck.setSettings({ teamsEnabled: !s.teamsEnabled })}
+                >
+                  {s.teamsEnabled ? 'on' : 'off'}
+                </button>
+              </div>
+              <div className="setting-row">
+                <span style={{ flex: 1 }}>Write-back — completing a mail item marks it read</span>
+                <button
+                  className="mini-btn"
+                  style={{ color: s.writeBackMail ? 'var(--teal)' : undefined }}
+                  onClick={() => void window.taskdeck.setSettings({ writeBackMail: !s.writeBackMail })}
+                >
+                  {s.writeBackMail ? 'on' : 'off'}
+                </button>
+              </div>
+            </>
+          )}
           {deviceCode && signingIn && (
             <div className="setting-row" style={{ borderColor: 'var(--teal-border)', flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
               <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
@@ -293,11 +393,12 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
               </div>
             </div>
           )}
-          {!outlook.configured && (
+          {!outlook.signedIn && (
             <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
               <span style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--text-dim)' }}>
-                Needs an Entra app registration (delegated Mail.Read + Calendars.Read, public client
-                flows enabled). Paste its ids here:
+                Signs in as you via Microsoft's public "Graph Command Line Tools" client — no app
+                registration needed. Advanced: use your own Entra registration instead (see
+                MANUAL-SETUP.md):
               </span>
               <input
                 className="key-input"
@@ -313,6 +414,46 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
               />
             </div>
           )}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="label" style={{ color: 'var(--text-faint)' }}>
+            GitHub · read-only
+          </div>
+          <ConnectorRow
+            ctx={ctx}
+            name="github"
+            state={ctx.state.github}
+            hint="Fine-grained PAT with Pull requests + Issues + Metadata read (see MANUAL-SETUP.md)"
+            placeholder="github_pat_…"
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="label" style={{ color: 'var(--text-faint)' }}>
+            Jira · read-only
+          </div>
+          <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+            <input
+              className="key-input"
+              placeholder="Site URL, e.g. https://efsta.atlassian.net"
+              defaultValue={s.jiraSiteUrl}
+              onBlur={(e) => void window.taskdeck.setSettings({ jiraSiteUrl: e.target.value.trim() })}
+            />
+            <input
+              className="key-input"
+              placeholder="Account email"
+              defaultValue={s.jiraEmail}
+              onBlur={(e) => void window.taskdeck.setSettings({ jiraEmail: e.target.value.trim() })}
+            />
+          </div>
+          <ConnectorRow
+            ctx={ctx}
+            name="jira"
+            state={ctx.state.jira}
+            hint="API token from id.atlassian.com → Security → API tokens"
+            placeholder="Jira API token…"
+          />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

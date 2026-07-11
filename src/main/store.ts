@@ -22,8 +22,14 @@ const DEFAULT_SETTINGS: Settings = {
   captureHotkey: 'Control+Shift+Space',
   launchAtLogin: true,
   autoBriefing: true,
-  outlookClientId: '',
-  outlookTenantId: ''
+  // Microsoft's first-party public "Graph Command Line Tools" client — device-code
+  // sign-in works with it out of the box, no own app registration required.
+  outlookClientId: '14d82eec-204b-4c2f-b7e8-296a70dab67e',
+  outlookTenantId: 'organizations',
+  teamsEnabled: true,
+  writeBackMail: false,
+  jiraSiteUrl: '',
+  jiraEmail: ''
 }
 
 export class Store {
@@ -437,7 +443,11 @@ export class Store {
     const r = this.db.prepare(`SELECT value FROM kv WHERE key = 'settings'`).get() as
       | { value: string }
       | undefined
-    return r ? { ...DEFAULT_SETTINGS, ...JSON.parse(r.value) } : { ...DEFAULT_SETTINGS }
+    const merged: Settings = r ? { ...DEFAULT_SETTINGS, ...JSON.parse(r.value) } : { ...DEFAULT_SETTINGS }
+    // Settings persisted before the public-client default may carry empty ids — fall back.
+    if (!merged.outlookClientId) merged.outlookClientId = DEFAULT_SETTINGS.outlookClientId
+    if (!merged.outlookTenantId) merged.outlookTenantId = DEFAULT_SETTINGS.outlookTenantId
+    return merged
   }
 
   setSettings(patch: Partial<Settings>): Settings {

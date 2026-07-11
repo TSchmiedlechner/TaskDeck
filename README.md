@@ -90,6 +90,17 @@ src/renderer  React deck UI (index.html) + capture spotlight (capture.html)
 - Models: `claude-haiku-4-5` for triage, `claude-opus-4-8` for the briefing. Structured outputs
   via `messages.parse()` + Zod schemas.
 
-## Roadmap (from the brief)
+## Integrations (all read-only unless noted)
 
-v1 Outlook mail + calendar (Graph) → v1.5 GitHub + Jira (MCP) → v2 Teams mentions → v3 write-back.
+| Source | What lands in the deck | Setup |
+| --- | --- | --- |
+| Outlook mail | unread/flagged inbox mails → AI-triaged candidates | Microsoft sign-in (device code, no app registration — see MANUAL-SETUP.md) |
+| Outlook calendar | today's meetings in the briefing | same sign-in |
+| Teams | chats you owe a reply → candidates | same sign-in (toggleable) |
+| GitHub | PRs awaiting your review → *do*; your open PRs → *waiting on* | fine-grained PAT |
+| Jira | open issues assigned to you → candidates (with due dates) | site + email + API token |
+| Write-back (v3, opt-in) | completing a mail item marks the mail read in Outlook | Settings toggle |
+
+Integration candidates are deduped by source id, tombstoned when dismissed (they stay gone),
+and auto-removed while untriaged once handled at the source. Structured sources (GitHub, Jira,
+Teams) get deterministic proposals with no AI cost; mails go through AI triage.

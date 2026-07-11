@@ -16,7 +16,7 @@ export interface Item {
   owner: string | null
   /** Short source/context note shown under the title */
   meta: string | null
-  source: 'capture' | 'manual' | 'outlook'
+  source: 'capture' | 'manual' | 'outlook' | 'github' | 'jira' | 'teams'
   /** Stable id in the source system (e.g. Graph message id) for sync dedupe */
   externalId: string | null
   /** Deep link back into the source (e.g. Outlook web link) */
@@ -94,9 +94,24 @@ export interface Settings {
   launchAtLogin: boolean
   /** Open the briefing automatically on the first interaction of each day */
   autoBriefing: boolean
-  /** Entra app registration for Microsoft Graph (Outlook). Empty = not configured. */
+  /**
+   * Entra client for Microsoft Graph. Defaults to Microsoft's first-party public
+   * "Graph Command Line Tools" client, so no own app registration is needed.
+   */
   outlookClientId: string
   outlookTenantId: string
+  /** Sync Teams chats you owe a reply to (needs Chat.Read consent) */
+  teamsEnabled: boolean
+  /** Write-back: completing a mail item marks the mail read in Outlook */
+  writeBackMail: boolean
+  jiraSiteUrl: string
+  jiraEmail: string
+}
+
+export interface ConnectorState {
+  configured: boolean
+  lastSync: string | null
+  error: string | null
 }
 
 export interface OutlookState {
@@ -173,6 +188,8 @@ export interface DeckState {
   cliAvailable: boolean
   pendingTriageCount: number
   outlook: OutlookState
+  github: ConnectorState
+  jira: ConnectorState
 }
 
 /** API exposed to the renderer via the preload bridge */
@@ -195,7 +212,10 @@ export interface TaskdeckApi {
   /** Starts the device-code sign-in; resolves when completed or failed. Code arrives via onDeviceCode. */
   outlookSignIn(): Promise<boolean>
   outlookSignOut(): Promise<void>
-  outlookSyncNow(): Promise<void>
+  /** Sync all configured connectors now */
+  syncNow(): Promise<void>
+  setConnectorToken(connector: 'github' | 'jira', token: string): Promise<void>
+  clearConnectorToken(connector: 'github' | 'jira'): Promise<void>
   openExternal(url: string): Promise<void>
   listOwners(): Promise<string[]>
   openCapture(): Promise<void>

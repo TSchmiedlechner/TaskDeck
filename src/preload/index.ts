@@ -19,7 +19,10 @@ const api: TaskdeckApi = {
   setHotkey: (accelerator: string) => ipcRenderer.invoke('hotkey:set', accelerator),
   outlookSignIn: () => ipcRenderer.invoke('outlook:signin'),
   outlookSignOut: () => ipcRenderer.invoke('outlook:signout'),
-  outlookSyncNow: () => ipcRenderer.invoke('outlook:sync'),
+  syncNow: () => ipcRenderer.invoke('sync:now'),
+  setConnectorToken: (connector: 'github' | 'jira', token: string) =>
+    ipcRenderer.invoke('connector:setToken', connector, token),
+  clearConnectorToken: (connector: 'github' | 'jira') => ipcRenderer.invoke('connector:clearToken', connector),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   listOwners: () => ipcRenderer.invoke('owners:list'),
   openCapture: () => ipcRenderer.invoke('capture:open'),

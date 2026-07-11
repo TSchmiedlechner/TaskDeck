@@ -21,7 +21,8 @@ export function ageChip(item: Item, now: Date): { text: string; warn: boolean } 
     return { text: d === 0 ? 'today' : `${d}d`, warn: d >= 3 }
   }
   if (item.bucket === 'inbox') {
-    return { text: item.source === 'outlook' ? 'mail' : 'you', warn: false }
+    const chips: Record<string, string> = { outlook: 'mail', github: 'gh', jira: 'jira', teams: 'teams' }
+    return { text: chips[item.source] ?? 'you', warn: false }
   }
   if (item.priority) return { text: `P${item.priority}`, warn: item.priority === 1 }
   return { text: '', warn: false }

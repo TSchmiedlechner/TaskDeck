@@ -23,7 +23,11 @@ const SETTINGS: Settings = {
   launchAtLogin: true,
   autoBriefing: true,
   outlookClientId: '',
-  outlookTenantId: ''
+  outlookTenantId: '',
+  teamsEnabled: true,
+  writeBackMail: false,
+  jiraSiteUrl: '',
+  jiraEmail: ''
 }
 
 function makeItem(overrides: Partial<Item>): Item {

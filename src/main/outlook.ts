@@ -7,16 +7,20 @@ import {
 } from '@azure/msal-node'
 import type { DeviceCodePrompt, Meeting, OutlookState } from '@shared/types'
 import { getEncryptedKv, setEncryptedKv } from './keystore'
+import { applyCandidates } from './connectors/common'
 import {
-  diffMailSync,
+  chatToCandidate,
   eventToMeeting,
   mailToCandidate,
+  type GraphChat,
   type GraphEvent,
   type GraphMessage
 } from './outlook-map'
 import type { Store } from './store'
 
-const SCOPES = ['User.Read', 'Mail.Read', 'Calendars.Read']
+// Mail.ReadWrite (superset of Mail.Read) so the optional write-back toggle can mark
+// mails read; the sync itself never writes unless that toggle is on.
+const SCOPES = ['User.Read', 'Mail.ReadWrite', 'Calendars.Read', 'Chat.Read']
 const GRAPH = 'https://graph.microsoft.com/v1.0'
 const SYNC_INTERVAL_MS = 3 * 60_000
 const CACHE_KV = 'msalTokenCache'
@@ -32,6 +36,7 @@ export class OutlookSync {
   private timer: NodeJS.Timeout | null = null
   private syncing = false
   private account: AccountInfo | null = null
+  private myUserId: string | null = null
   lastSync: string | null = null
   lastError: string | null = null
   todayEvents: Meeting[] = []
@@ -123,6 +128,7 @@ export class OutlookSync {
     if (pca && this.account) await pca.getTokenCache().removeAccount(this.account)
     setEncryptedKv(this.store, CACHE_KV, '')
     this.account = null
+    this.myUserId = null
     this.todayEvents = []
     this.stop()
     this.store.logActivity(null, 'system', 'Outlook disconnected')
@@ -167,9 +173,23 @@ export class OutlookSync {
     try {
       const accessToken = await this.token()
       if (!accessToken) return
-      await Promise.all([this.syncMail(accessToken), this.syncCalendar(accessToken)])
+      // Per-source isolation: a Teams consent/licensing failure must not break mail sync.
+      const errors: string[] = []
+      const guard = async (name: string, fn: () => Promise<void>): Promise<void> => {
+        try {
+          await fn()
+        } catch (err) {
+          errors.push(`${name}: ${(err as Error).message}`)
+        }
+      }
+      await Promise.all([
+        guard('mail', () => this.syncMail(accessToken)),
+        guard('calendar', () => this.syncCalendar(accessToken)),
+        guard('teams', () => this.syncTeams(accessToken))
+      ])
       this.lastSync = new Date().toISOString()
-      this.lastError = null
+      this.lastError = errors.length > 0 ? errors.join(' · ') : null
+      if (this.lastError) this.store.logActivity(null, 'system', `Outlook sync: ${this.lastError}`)
     } catch (err) {
       this.lastError = (err as Error).message
       this.store.logActivity(null, 'system', `Outlook sync failed: ${this.lastError}`)
@@ -179,6 +199,19 @@ export class OutlookSync {
     }
   }
 
+  /** Write-back (opt-in): mark the mail behind a completed item as read in Outlook. */
+  async markMailRead(externalId: string): Promise<boolean> {
+    const accessToken = await this.token()
+    if (!accessToken) return false
+    const messageId = externalId.replace(/^outlook:/, '')
+    const res = await fetch(`${GRAPH}/me/messages/${encodeURIComponent(messageId)}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isRead: true })
+    })
+    return res.ok
+  }
+
   private async syncMail(accessToken: string): Promise<void> {
     const filter = encodeURIComponent("isRead eq false or flag/flagStatus eq 'flagged'")
     const select = 'id,subject,bodyPreview,receivedDateTime,webLink,from,flag'
@@ -186,19 +219,23 @@ export class OutlookSync {
       accessToken,
       `/me/mailFolders/inbox/messages?$filter=${filter}&$select=${select}&$top=25&$orderby=receivedDateTime desc`
     )
-    const candidates = data.value.map(mailToCandidate)
-    const local = this.store.listItems()
-    const { add, removeIds } = diffMailSync(candidates, local, this.store.tombstones())
+    applyCandidates(this.store, 'outlook', data.value.map(mailToCandidate), 'handled in Outlook — candidate removed')
+  }
 
-    for (const c of add) {
-      const item = this.store.createExternalItem({ ...c, source: 'outlook' })
-      this.store.logActivity(item.id, 'system', 'Arrived from Outlook (unread/flagged)')
+  private async syncTeams(accessToken: string): Promise<void> {
+    if (!this.store.getSettings().teamsEnabled) return
+    if (!this.myUserId) {
+      const me = await this.graphGet<{ id: string }>(accessToken, '/me?$select=id')
+      this.myUserId = me.id
     }
-    for (const id of removeIds) {
-      const item = this.store.getItem(id)
-      this.store.logActivity(null, 'system', `"${item?.title ?? id}" handled in Outlook — candidate removed`)
-      this.store.deleteItem(id, false)
-    }
+    const data = await this.graphGet<{ value: GraphChat[] }>(
+      accessToken,
+      '/me/chats?$expand=lastMessagePreview&$top=20'
+    )
+    const candidates = data.value
+      .map((chat) => chatToCandidate(chat, this.myUserId!))
+      .filter((c): c is NonNullable<typeof c> => c !== null)
+    applyCandidates(this.store, 'teams', candidates, 'answered in Teams — candidate removed')
   }
 
   private async syncCalendar(accessToken: string): Promise<void> {
