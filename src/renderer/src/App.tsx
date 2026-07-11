@@ -32,6 +32,10 @@ export default function App(): React.JSX.Element {
     return window.taskdeck.onStateChanged(refresh)
   }, [refresh])
 
+  useEffect(() => {
+    return window.taskdeck.onShowBriefing(() => setOverlay('briefing'))
+  }, [])
+
   const showToast = useCallback((text: string) => {
     setToast(text)
     window.setTimeout(() => setToast(null), 2400)

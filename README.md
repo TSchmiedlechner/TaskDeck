@@ -47,9 +47,16 @@ Only the AI calls leave the machine.
 npm install
 npm run dev        # development with hot reload
 npm run build      # production build to out/
+npm run dist       # build the Windows installer to dist/TaskDeck Setup x.y.z.exe
 npm run typecheck  # tsc over main+preload and renderer
 npm test           # vitest unit tests
+npm run icons      # regenerate build/icon.ico + resources/tray.png
 ```
+
+Install via the setup exe from `npm run dist`. The app lives in the tray: closing the deck window
+hides it, the tray menu has Show deck / Quick capture / Morning briefing / Quit. Start-with-Windows
+is on by default (Settings → Behavior), the capture hotkey is configurable there too, and the
+morning briefing opens automatically on the first interaction of each day.
 
 ### Agent backends
 

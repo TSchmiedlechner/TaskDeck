@@ -1,5 +1,6 @@
-import { app, BrowserWindow, globalShortcut } from 'electron'
+import { app, BrowserWindow, globalShortcut, Menu, nativeImage, Tray } from 'electron'
 import { join } from 'path'
+import trayIconPath from '../../resources/tray.png?asset'
 import { Store } from './store'
 import { Brain } from './brain'
 import { Scheduler } from './scheduler'
@@ -8,17 +9,15 @@ import { createCaptureWindow, createDeckWindow, positionCaptureWindow } from './
 
 let deckWin: BrowserWindow | null = null
 let captureWin: BrowserWindow | null = null
+let tray: Tray | null = null
+let quitting = false
+let registeredHotkey: string | null = null
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
-    if (deckWin) {
-      if (deckWin.isMinimized()) deckWin.restore()
-      deckWin.focus()
-    }
-  })
+  app.on('second-instance', () => showDeck())
 
   void app.whenReady().then(() => {
     const store = new Store(join(app.getPath('userData'), 'taskdeck.db'))
@@ -35,6 +34,24 @@ if (!gotLock) {
 
     deckWin = createDeckWindow(settings.privacyMode)
     captureWin = createCaptureWindow(settings.privacyMode)
+
+    // Closing the deck hides it — TaskDeck lives in the tray until Quit.
+    deckWin.on('close', (e) => {
+      if (!quitting) {
+        e.preventDefault()
+        deckWin?.hide()
+      }
+    })
+
+    // Auto-open the briefing on the first interaction of each day.
+    deckWin.on('focus', () => {
+      if (!store.getSettings().autoBriefing) return
+      const today = new Date().toISOString().slice(0, 10)
+      if (store.getKv('lastAutoBriefing') !== today) {
+        store.setKv('lastAutoBriefing', today)
+        deckWin?.webContents.send('show-briefing')
+      }
+    })
 
     const openCapture = (): void => {
       if (!captureWin || captureWin.isDestroyed()) {
@@ -56,24 +73,82 @@ if (!gotLock) {
       }
     }
 
-    registerIpc({ store, brain, scheduler, broadcast, openCapture, closeCapture, applyPrivacyMode })
+    const applyHotkey = (accelerator: string): boolean => {
+      const previous = registeredHotkey
+      if (previous) globalShortcut.unregister(previous)
+      try {
+        if (globalShortcut.register(accelerator, openCapture)) {
+          registeredHotkey = accelerator
+          return true
+        }
+      } catch {
+        // invalid accelerator string
+      }
+      if (previous && globalShortcut.register(previous, openCapture)) registeredHotkey = previous
+      return false
+    }
 
-    globalShortcut.register('Control+Shift+Space', openCapture)
+    const applyLaunchAtLogin = (on: boolean): void => {
+      if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: on })
+    }
+
+    registerIpc({
+      store,
+      brain,
+      scheduler,
+      broadcast,
+      openCapture,
+      closeCapture,
+      applyPrivacyMode,
+      applyHotkey,
+      applyLaunchAtLogin
+    })
+
+    if (!applyHotkey(settings.captureHotkey)) {
+      store.logActivity(null, 'system', `Could not register hotkey "${settings.captureHotkey}" — is another app using it?`)
+    }
+    applyLaunchAtLogin(settings.launchAtLogin)
+
+    tray = new Tray(nativeImage.createFromPath(trayIconPath))
+    tray.setToolTip('TaskDeck')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Show deck', click: () => showDeck() },
+        { label: 'Quick capture', click: openCapture },
+        {
+          label: 'Morning briefing',
+          click: () => {
+            showDeck()
+            deckWin?.webContents.send('show-briefing')
+          }
+        },
+        { type: 'separator' },
+        { label: 'Quit TaskDeck', click: () => app.quit() }
+      ])
+    )
+    tray.on('click', () => showDeck())
 
     scheduler.start()
 
-    deckWin.on('closed', () => {
-      deckWin = null
-      app.quit()
+    app.on('before-quit', () => {
+      quitting = true
     })
 
     app.on('will-quit', () => {
       globalShortcut.unregisterAll()
       scheduler.stop()
+      tray?.destroy()
     })
   })
 
   app.on('window-all-closed', () => {
-    app.quit()
+    // keep running in the tray
   })
+}
+
+function showDeck(): void {
+  if (!deckWin || deckWin.isDestroyed()) return
+  if (deckWin.isMinimized()) deckWin.restore()
+  deckWin.show()
+  deckWin.focus()
 }

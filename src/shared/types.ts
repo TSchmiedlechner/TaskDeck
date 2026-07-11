@@ -85,6 +85,11 @@ export interface Settings {
   provider: BrainProviderPref
   triageModel: string
   briefingModel: string
+  /** Electron accelerator string for the global capture hotkey */
+  captureHotkey: string
+  launchAtLogin: boolean
+  /** Open the briefing automatically on the first interaction of each day */
+  autoBriefing: boolean
 }
 
 export interface ModelOption {
@@ -154,10 +159,13 @@ export interface TaskdeckApi {
   getCostSummary(): Promise<CostSummary>
   setApiKey(key: string): Promise<void>
   clearApiKey(): Promise<void>
+  /** Try to register a new capture hotkey; returns false (and keeps the old one) if the OS rejects it */
+  setHotkey(accelerator: string): Promise<boolean>
   listOwners(): Promise<string[]>
   openCapture(): Promise<void>
   closeCapture(): Promise<void>
   copyToClipboard(text: string): Promise<void>
   onStateChanged(cb: () => void): () => void
   onCaptureShown(cb: () => void): () => void
+  onShowBriefing(cb: () => void): () => void
 }

@@ -14,10 +14,12 @@ export interface IpcDeps {
   openCapture: () => void
   closeCapture: () => void
   applyPrivacyMode: (on: boolean) => void
+  applyHotkey: (accelerator: string) => boolean
+  applyLaunchAtLogin: (on: boolean) => void
 }
 
 export function registerIpc(deps: IpcDeps): void {
-  const { store, brain, scheduler, broadcast, openCapture, closeCapture, applyPrivacyMode } = deps
+  const { store, brain, scheduler, broadcast, openCapture, closeCapture, applyPrivacyMode, applyHotkey, applyLaunchAtLogin } = deps
 
   const notifyAndScan = (): void => {
     scheduler.onMutation()
@@ -113,7 +115,22 @@ export function registerIpc(deps: IpcDeps): void {
     const merged = store.setSettings(patch)
     if ('privacyMode' in patch) applyPrivacyMode(merged.privacyMode)
     if ('provider' in patch) await brain.redetectCli()
+    if ('launchAtLogin' in patch) applyLaunchAtLogin(merged.launchAtLogin)
     notifyAndScan()
+  })
+
+  ipcMain.handle('hotkey:set', (_e, accelerator: string): boolean => {
+    const accel = String(accelerator ?? '').trim()
+    if (!accel) return false
+    const ok = applyHotkey(accel)
+    if (ok) {
+      store.setSettings({ captureHotkey: accel })
+      store.logActivity(null, 'you', `Capture hotkey changed to ${accel}`)
+    } else {
+      store.logActivity(null, 'system', `Hotkey "${accel}" could not be registered — kept the previous one`)
+    }
+    notifyAndScan()
+    return ok
   })
 
   ipcMain.handle('apikey:set', async (_e, key: string) => {

@@ -18,7 +18,10 @@ const DEFAULT_SETTINGS: Settings = {
   privacyMode: true,
   provider: 'auto',
   triageModel: 'claude-haiku-4-5',
-  briefingModel: 'claude-opus-4-8'
+  briefingModel: 'claude-opus-4-8',
+  captureHotkey: 'Control+Shift+Space',
+  launchAtLogin: true,
+  autoBriefing: true
 }
 
 export class Store {

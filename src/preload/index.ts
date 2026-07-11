@@ -16,6 +16,7 @@ const api: TaskdeckApi = {
   getCostSummary: () => ipcRenderer.invoke('cost:summary'),
   setApiKey: (key: string) => ipcRenderer.invoke('apikey:set', key),
   clearApiKey: () => ipcRenderer.invoke('apikey:clear'),
+  setHotkey: (accelerator: string) => ipcRenderer.invoke('hotkey:set', accelerator),
   listOwners: () => ipcRenderer.invoke('owners:list'),
   openCapture: () => ipcRenderer.invoke('capture:open'),
   closeCapture: () => ipcRenderer.invoke('capture:close'),
@@ -29,6 +30,11 @@ const api: TaskdeckApi = {
     const listener = (): void => cb()
     ipcRenderer.on('capture-shown', listener)
     return () => ipcRenderer.removeListener('capture-shown', listener)
+  },
+  onShowBriefing: (cb: () => void) => {
+    const listener = (): void => cb()
+    ipcRenderer.on('show-briefing', listener)
+    return () => ipcRenderer.removeListener('show-briefing', listener)
   }
 }
 

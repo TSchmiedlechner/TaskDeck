@@ -12,7 +12,20 @@ const PROVIDER_OPTIONS: { id: BrainProviderPref; label: string; hint: string }[]
 export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: () => void }): React.JSX.Element {
   const [cost, setCost] = useState<CostSummary | null>(null)
   const [keyInput, setKeyInput] = useState('')
+  const [hotkeyInput, setHotkeyInput] = useState<string | null>(null)
   const s = ctx.state.settings
+
+  const saveHotkey = (): void => {
+    const accel = (hotkeyInput ?? '').trim()
+    if (!accel || accel === s.captureHotkey) {
+      setHotkeyInput(null)
+      return
+    }
+    void window.taskdeck.setHotkey(accel).then((ok) => {
+      ctx.showToast(ok ? `Hotkey is now ${accel}` : 'That hotkey could not be registered — kept the old one')
+      setHotkeyInput(null)
+    })
+  }
 
   useEffect(() => {
     void window.taskdeck.getCostSummary().then(setCost)
@@ -210,6 +223,57 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
           {numberSetting('Chase nudge after (days)', s.chaseDays, 1, 14, (v) =>
             void window.taskdeck.setSettings({ chaseDays: v })
           )}
+          <div className="setting-row">
+            <span style={{ flex: 1 }}>Capture hotkey</span>
+            {hotkeyInput === null ? (
+              <>
+                <span className="mono" style={{ fontSize: 10, color: 'var(--text-chip)' }}>
+                  {s.captureHotkey}
+                </span>
+                <button className="mini-btn" onClick={() => setHotkeyInput(s.captureHotkey)}>
+                  edit
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  className="key-input"
+                  style={{ maxWidth: 180 }}
+                  autoFocus
+                  value={hotkeyInput}
+                  placeholder="e.g. Control+Alt+Space"
+                  onChange={(e) => setHotkeyInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveHotkey()
+                    if (e.key === 'Escape') setHotkeyInput(null)
+                  }}
+                />
+                <button className="mini-btn" onClick={saveHotkey}>
+                  save
+                </button>
+              </>
+            )}
+          </div>
+          <div className="setting-row">
+            <span style={{ flex: 1 }}>Start with Windows</span>
+            <button
+              className="mini-btn"
+              style={{ color: s.launchAtLogin ? 'var(--teal)' : undefined }}
+              onClick={() => void window.taskdeck.setSettings({ launchAtLogin: !s.launchAtLogin })}
+            >
+              {s.launchAtLogin ? 'on' : 'off'}
+            </button>
+          </div>
+          <div className="setting-row">
+            <span style={{ flex: 1 }}>Auto-open briefing each morning</span>
+            <button
+              className="mini-btn"
+              style={{ color: s.autoBriefing ? 'var(--teal)' : undefined }}
+              onClick={() => void window.taskdeck.setSettings({ autoBriefing: !s.autoBriefing })}
+            >
+              {s.autoBriefing ? 'on' : 'off'}
+            </button>
+          </div>
           <div className="setting-row">
             <span style={{ flex: 1 }}>Privacy — hide from screen shares</span>
             <button
