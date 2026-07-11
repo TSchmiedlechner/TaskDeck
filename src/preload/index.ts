@@ -24,6 +24,7 @@ const api: TaskdeckApi = {
     ipcRenderer.invoke('connector:setToken', connector, token),
   clearConnectorToken: (connector: 'github' | 'jira') => ipcRenderer.invoke('connector:clearToken', connector),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  openLogs: () => ipcRenderer.invoke('logs:open'),
   listOwners: () => ipcRenderer.invoke('owners:list'),
   openCapture: () => ipcRenderer.invoke('capture:open'),
   closeCapture: () => ipcRenderer.invoke('capture:close'),

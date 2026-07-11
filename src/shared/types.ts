@@ -217,6 +217,8 @@ export interface TaskdeckApi {
   setConnectorToken(connector: 'github' | 'jira', token: string): Promise<void>
   clearConnectorToken(connector: 'github' | 'jira'): Promise<void>
   openExternal(url: string): Promise<void>
+  /** Open the log folder (%APPDATA%/taskdeck/logs) in Explorer */
+  openLogs(): Promise<void>
   listOwners(): Promise<string[]>
   openCapture(): Promise<void>
   closeCapture(): Promise<void>

@@ -8,6 +8,7 @@ import type { JiraSync } from './connectors/jira'
 import { GITHUB_TOKEN_KV } from './connectors/github'
 import { JIRA_TOKEN_KV } from './connectors/jira'
 import { nextMonday } from './logic'
+import { getLogDir } from './logger'
 import { clearApiKey, setApiKey, setEncryptedKv } from './keystore'
 import type { Briefing, DeckState, Item, Settings, StructureProposal } from '@shared/types'
 
@@ -225,6 +226,11 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('shell:openExternal', (_e, url: string) => {
     const parsed = new URL(String(url))
     if (parsed.protocol === 'https:' || parsed.protocol === 'http:') void shell.openExternal(parsed.href)
+  })
+
+  ipcMain.handle('logs:open', () => {
+    const dir = getLogDir()
+    if (dir) void shell.openPath(dir)
   })
 }
 

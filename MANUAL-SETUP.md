@@ -57,6 +57,6 @@ switch to the own registration in that case.
 | Date | Action | Status |
 | --- | --- | --- |
 | 2026-07-11 | Claude CLI login present on this machine — CLI provider active | done |
-| 2026-07-11 | Microsoft sign-in via device code | pending |
+| 2026-07-11 | Microsoft sign-in via device code (t.schmiedlechner@efsta.eu) | done |
 | 2026-07-11 | GitHub fine-grained PAT | pending |
 | 2026-07-11 | Jira API token | pending |
