@@ -74,6 +74,12 @@ wins. CLI calls strip `ANTHROPIC_API_KEY` from the child environment so they alw
 the subscription, never the key. Triage and briefing models are selectable in Settings
 (defaults: Haiku 4.5 for triage, Opus 4.8 for the briefing).
 
+## Development flow
+
+GitHub flow: feature branches → PR against `main` (CI runs typecheck + tests + build) → merge.
+To release: bump `version` in `package.json` (via PR), then tag `vX.Y.Z` — the Release workflow
+builds the Windows installer and publishes it as a GitHub release.
+
 ## Architecture
 
 ```
