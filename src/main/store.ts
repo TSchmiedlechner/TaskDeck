@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
+import { logToFile } from './logger'
 import type {
   ActivityEntry,
   Item,
@@ -389,6 +390,7 @@ export class Store {
     this.db
       .prepare(`INSERT INTO activity (id, item_id, ts, actor, text) VALUES (?, ?, ?, ?, ?)`)
       .run(randomUUID(), itemId, new Date().toISOString(), actor, text)
+    logToFile(actor === 'system' ? 'error' : 'info', `[${actor}] ${text}`)
   }
 
   listActivity(limit: number, itemId?: string): ActivityEntry[] {

@@ -38,9 +38,13 @@ function ConnectorRow({
           }}
         />
         <span style={{ flex: 1, fontSize: 12 }}>{state.configured ? 'connected' : 'not connected'}</span>
-        <span className="mono" style={{ fontSize: 10, color: state.error ? 'var(--amber)' : 'var(--text-faint)' }}>
+        <span
+          className="mono"
+          title={state.error ?? undefined}
+          style={{ fontSize: 10, color: state.error ? 'var(--amber)' : 'var(--text-faint)' }}
+        >
           {state.error
-            ? state.error.slice(0, 40)
+            ? `${state.error.slice(0, 80)}${state.error.length > 80 ? '…' : ''}`
             : state.lastSync
               ? `synced ${new Date(state.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
               : ''}
@@ -322,9 +326,13 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
             <span style={{ flex: 1 }}>
               {outlook.signedIn ? (outlook.account ?? 'connected') : 'not connected'}
             </span>
-            <span className="mono" style={{ fontSize: 10, color: outlook.error ? 'var(--amber)' : 'var(--text-faint)' }}>
+            <span
+              className="mono"
+              title={outlook.error ?? undefined}
+              style={{ fontSize: 10, color: outlook.error ? 'var(--amber)' : 'var(--text-faint)' }}
+            >
               {outlook.error
-                ? outlook.error.slice(0, 40)
+                ? `${outlook.error.slice(0, 80)}${outlook.error.length > 80 ? '…' : ''}`
                 : outlook.lastSync
                   ? `synced ${new Date(outlook.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                   : ''}
@@ -533,6 +541,9 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
             <span className="mono" style={{ fontSize: 10, color: 'var(--text-chip)' }}>
               local SQLite · no sync
             </span>
+            <button className="mini-btn" title="Open the log folder" onClick={() => void window.taskdeck.openLogs()}>
+              logs
+            </button>
           </div>
         </div>
       </div>

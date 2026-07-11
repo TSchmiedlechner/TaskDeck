@@ -163,7 +163,17 @@ export class OutlookSync {
     const res = await fetch(`${GRAPH}${path}`, {
       headers: { Authorization: `Bearer ${accessToken}` }
     })
-    if (!res.ok) throw new Error(`Graph ${path.split('?')[0]} returned ${res.status}`)
+    if (!res.ok) {
+      // Surface Graph's own error code/message — a bare status is undebuggable.
+      let detail = ''
+      try {
+        const body = (await res.json()) as { error?: { code?: string; message?: string } }
+        if (body.error) detail = ` — ${body.error.code}: ${body.error.message}`
+      } catch {
+        // non-JSON error body
+      }
+      throw new Error(`Graph ${path.split('?')[0]} returned ${res.status}${detail}`)
+    }
     return (await res.json()) as T
   }
 
@@ -213,13 +223,17 @@ export class OutlookSync {
   }
 
   private async syncMail(accessToken: string): Promise<void> {
+    // No $orderby here: combining a $filter on isRead/flag with $orderby on
+    // receivedDateTime makes Graph reject the query as "too complex" on real
+    // mailboxes. The default folder order is receivedDateTime desc anyway.
     const filter = encodeURIComponent("isRead eq false or flag/flagStatus eq 'flagged'")
     const select = 'id,subject,bodyPreview,receivedDateTime,webLink,from,flag'
     const data = await this.graphGet<{ value: GraphMessage[] }>(
       accessToken,
-      `/me/mailFolders/inbox/messages?$filter=${filter}&$select=${select}&$top=25&$orderby=receivedDateTime desc`
+      `/me/mailFolders/inbox/messages?$filter=${filter}&$select=${select}&$top=25`
     )
-    applyCandidates(this.store, 'outlook', data.value.map(mailToCandidate), 'handled in Outlook — candidate removed')
+    const newestFirst = [...data.value].sort((a, b) => b.receivedDateTime.localeCompare(a.receivedDateTime))
+    applyCandidates(this.store, 'outlook', newestFirst.map(mailToCandidate), 'handled in Outlook — candidate removed')
   }
 
   private async syncTeams(accessToken: string): Promise<void> {

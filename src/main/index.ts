@@ -2,6 +2,7 @@ import { app, BrowserWindow, globalShortcut, Menu, nativeImage, Tray } from 'ele
 import { join } from 'path'
 import trayIconPath from '../../resources/tray.png?asset'
 import { Store } from './store'
+import { initLogger } from './logger'
 import { Brain } from './brain'
 import { Scheduler } from './scheduler'
 import { OutlookSync } from './outlook'
@@ -23,6 +24,7 @@ if (!gotLock) {
   app.on('second-instance', () => showDeck())
 
   void app.whenReady().then(() => {
+    initLogger(join(app.getPath('userData'), 'logs'))
     const store = new Store(join(app.getPath('userData'), 'taskdeck.db'))
     const brain = new Brain(store)
     const settings = store.getSettings()
