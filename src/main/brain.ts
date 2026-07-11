@@ -1,12 +1,17 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { z } from 'zod'
-import type { BrainStatus, Briefing, Item, Settings, StructureProposal } from '@shared/types'
-import { computeCostUsd } from './logic'
+import type {
+  ApiKeySource,
+  BrainProviderId,
+  BrainStatus,
+  Briefing,
+  Item,
+  Settings,
+  StructureProposal
+} from '@shared/types'
+import { computeCostUsd, resolveProviderId } from './logic'
+import { resolveApiKey } from './keystore'
+import { ApiProvider, CliProvider, detectCli, type CompletionProvider } from './providers'
 import type { Store } from './store'
-
-const TRIAGE_MODEL = 'claude-haiku-4-5'
-const BRIEFING_MODEL = 'claude-opus-4-8'
 
 const TriageResultSchema = z.object({
   items: z.array(
@@ -57,24 +62,61 @@ Rules:
 Keep proposals faithful to the capture — do not add scope the user didn't write.`
 
 export class Brain {
-  private client: Anthropic | null = null
-  status: BrainStatus = 'no-key'
+  private api: ApiProvider
+  private cli = new CliProvider()
+  private lastCallFailed = false
 
   constructor(private store: Store) {
-    if (process.env.ANTHROPIC_API_KEY) {
-      this.client = new Anthropic()
-      this.status = 'ready'
-    }
+    this.api = new ApiProvider(() => resolveApiKey(this.store)?.key ?? null)
+    void this.redetectCli()
   }
 
-  private track(purpose: string, model: string, usage: { input_tokens: number; output_tokens: number }): void {
-    const cost = computeCostUsd(model, usage.input_tokens, usage.output_tokens)
-    this.store.logCost(model, purpose, usage.input_tokens, usage.output_tokens, cost)
+  async redetectCli(): Promise<void> {
+    this.cli.available = await detectCli()
+  }
+
+  get cliAvailable(): boolean {
+    return this.cli.available
+  }
+
+  get keySource(): ApiKeySource {
+    return resolveApiKey(this.store)?.source ?? null
+  }
+
+  /** The backend the next call would use, after auto-resolution. */
+  resolveProvider(): CompletionProvider | null {
+    const settings = this.store.getSettings()
+    const id = resolveProviderId(settings.provider, this.cli.available, this.keySource !== null)
+    if (id === 'cli') return this.cli
+    if (id === 'api') return this.api
+    return null
+  }
+
+  get providerId(): BrainProviderId | null {
+    return this.resolveProvider()?.id ?? null
+  }
+
+  get status(): BrainStatus {
+    if (!this.resolveProvider()) return 'offline'
+    return this.lastCallFailed ? 'error' : 'ready'
+  }
+
+  private track(
+    provider: BrainProviderId,
+    purpose: string,
+    model: string,
+    inputTokens: number,
+    outputTokens: number
+  ): void {
+    const cost = provider === 'api' ? computeCostUsd(model, inputTokens, outputTokens) : 0
+    this.store.logCost(model, `${purpose} (${provider})`, inputTokens, outputTokens, cost)
   }
 
   /** Batch-triage raw captures into structure proposals. Returns a map itemId -> proposal. */
   async triage(captures: { id: string; text: string }[]): Promise<Map<string, StructureProposal>> {
-    if (!this.client || captures.length === 0) return new Map()
+    const provider = this.resolveProvider()
+    if (!provider || captures.length === 0) return new Map()
+    const settings = this.store.getSettings()
 
     const rejected = this.store.recentRejectedProposals(8)
     const rejectedNote =
@@ -91,17 +133,17 @@ export class Brain {
       JSON.stringify(captures, null, 2)
 
     try {
-      const response = await this.client.messages.parse({
-        model: TRIAGE_MODEL,
-        max_tokens: 4096,
+      const response = await provider.complete({
+        model: settings.triageModel,
+        maxTokens: 4096,
         system: TRIAGE_SYSTEM,
-        messages: [{ role: 'user', content: userContent }],
-        output_config: { format: zodOutputFormat(TriageResultSchema) }
+        user: userContent,
+        schema: TriageResultSchema
       })
-      this.track('triage', TRIAGE_MODEL, response.usage)
-      this.status = 'ready'
+      this.track(provider.id, 'triage', settings.triageModel, response.inputTokens, response.outputTokens)
+      this.lastCallFailed = false
       const result = new Map<string, StructureProposal>()
-      for (const entry of response.parsed_output?.items ?? []) {
+      for (const entry of response.parsed?.items ?? []) {
         result.set(entry.id, {
           title: entry.title,
           type: entry.type,
@@ -114,18 +156,19 @@ export class Brain {
       }
       return result
     } catch (err) {
-      this.status = 'error'
-      this.store.logActivity(null, 'system', `Triage call failed: ${(err as Error).message}`)
+      this.lastCallFailed = true
+      this.store.logActivity(null, 'system', `Triage call failed (${provider.id}): ${(err as Error).message}`)
       return new Map()
     }
   }
 
-  /** Compose the morning briefing with the strong model. Falls back to a deterministic briefing without a key. */
+  /** Compose the morning briefing with the strong model. Deterministic fallback when offline. */
   async composeBriefing(items: Item[], settings: Settings): Promise<Briefing> {
     const date = new Date().toISOString().slice(0, 10)
     const active = items.filter((i) => i.bucket !== 'done' && i.completedAt === null)
+    const provider = this.resolveProvider()
 
-    if (!this.client) return this.fallbackBriefing(date, active, settings)
+    if (!provider) return this.fallbackBriefing(date, active, settings)
 
     const now = new Date()
     const describe = (i: Item): Record<string, unknown> => ({
@@ -152,17 +195,17 @@ export class Brain {
       `Only reference item ids that exist. Be direct and concrete, no filler.`
 
     try {
-      const response = await this.client.messages.parse({
-        model: BRIEFING_MODEL,
-        max_tokens: 4096,
+      const response = await provider.complete({
+        model: settings.briefingModel,
+        maxTokens: 4096,
         system:
           'You are the chief-of-staff brain of TaskDeck, planning the day of a hands-on CTO. Be concrete, terse, and decisive.',
-        messages: [{ role: 'user', content: userContent }],
-        output_config: { format: zodOutputFormat(BriefingSchema) }
+        user: userContent,
+        schema: BriefingSchema
       })
-      this.track('briefing', BRIEFING_MODEL, response.usage)
-      this.status = 'ready'
-      const parsed = response.parsed_output
+      this.track(provider.id, 'briefing', settings.briefingModel, response.inputTokens, response.outputTokens)
+      this.lastCallFailed = false
+      const parsed = response.parsed
       if (!parsed) return this.fallbackBriefing(date, active, settings)
       const validIds = new Set(active.map((i) => i.id))
       return {
@@ -175,8 +218,8 @@ export class Brain {
         generatedBy: 'agent'
       }
     } catch (err) {
-      this.status = 'error'
-      this.store.logActivity(null, 'system', `Briefing call failed: ${(err as Error).message}`)
+      this.lastCallFailed = true
+      this.store.logActivity(null, 'system', `Briefing call failed (${provider.id}): ${(err as Error).message}`)
       return this.fallbackBriefing(date, active, settings)
     }
   }

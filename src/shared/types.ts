@@ -73,12 +73,30 @@ export interface ActivityEntry {
   text: string
 }
 
+export type BrainProviderPref = 'auto' | 'cli' | 'api'
+export type BrainProviderId = 'cli' | 'api'
+
 export interface Settings {
   nowCap: number
   stalenessDays: number
   chaseDays: number
   privacyMode: boolean
+  /** Which completion backend to use. 'auto' prefers the CLI (Max plan), then the API. */
+  provider: BrainProviderPref
+  triageModel: string
+  briefingModel: string
 }
+
+export interface ModelOption {
+  id: string
+  label: string
+}
+
+export const MODEL_OPTIONS: ModelOption[] = [
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
+  { id: 'claude-opus-4-8', label: 'Opus 4.8' }
+]
 
 export interface CostSummary {
   month: string
@@ -105,13 +123,19 @@ export interface Briefing {
   generatedBy: 'agent' | 'fallback'
 }
 
-export type BrainStatus = 'ready' | 'no-key' | 'error'
+export type BrainStatus = 'ready' | 'offline' | 'error'
+export type ApiKeySource = 'settings' | 'env' | null
 
 export interface DeckState {
   items: Item[]
   suggestions: Suggestion[]
   settings: Settings
   brainStatus: BrainStatus
+  /** The backend that would serve the next call, after auto-resolution */
+  brainProvider: BrainProviderId | null
+  /** Where the API key comes from, if any */
+  keySource: ApiKeySource
+  cliAvailable: boolean
   pendingTriageCount: number
 }
 
@@ -128,6 +152,8 @@ export interface TaskdeckApi {
   getActivity(limit: number, itemId?: string): Promise<ActivityEntry[]>
   setSettings(patch: Partial<Settings>): Promise<void>
   getCostSummary(): Promise<CostSummary>
+  setApiKey(key: string): Promise<void>
+  clearApiKey(): Promise<void>
   listOwners(): Promise<string[]>
   openCapture(): Promise<void>
   closeCapture(): Promise<void>

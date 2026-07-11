@@ -15,7 +15,10 @@ const DEFAULT_SETTINGS: Settings = {
   nowCap: 5,
   stalenessDays: 10,
   chaseDays: 3,
-  privacyMode: true
+  privacyMode: true,
+  provider: 'auto',
+  triageModel: 'claude-haiku-4-5',
+  briefingModel: 'claude-opus-4-8'
 }
 
 export class Store {

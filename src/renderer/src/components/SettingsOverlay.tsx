@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react'
-import type { CostSummary } from '@shared/types'
+import type { BrainProviderPref, CostSummary } from '@shared/types'
+import { MODEL_OPTIONS } from '@shared/types'
 import type { DeckContext } from '../App'
+
+const PROVIDER_OPTIONS: { id: BrainProviderPref; label: string; hint: string }[] = [
+  { id: 'auto', label: 'auto', hint: 'CLI when available, else API' },
+  { id: 'cli', label: 'cli', hint: 'Claude Code CLI — covered by your Max plan' },
+  { id: 'api', label: 'api', hint: 'Direct Anthropic API — pay per token' }
+]
 
 export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: () => void }): React.JSX.Element {
   const [cost, setCost] = useState<CostSummary | null>(null)
+  const [keyInput, setKeyInput] = useState('')
   const s = ctx.state.settings
 
   useEffect(() => {
     void window.taskdeck.getCostSummary().then(setCost)
-  }, [])
+  }, [ctx.state])
 
   const numberSetting = (
     label: string,
@@ -31,12 +39,43 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
     </div>
   )
 
-  const brainLine =
-    ctx.state.brainStatus === 'ready'
-      ? 'connected'
-      : ctx.state.brainStatus === 'no-key'
-        ? 'no ANTHROPIC_API_KEY in environment'
-        : 'last call failed — will retry'
+  const modelSetting = (label: string, value: string, onChange: (v: string) => void): React.JSX.Element => (
+    <div className="setting-row">
+      <span style={{ flex: 1 }}>{label}</span>
+      <select className="dark-select" value={value} onChange={(e) => onChange(e.target.value)}>
+        {MODEL_OPTIONS.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+
+  const statusLine = ((): string => {
+    if (ctx.state.brainStatus === 'error') return 'last call failed — will retry'
+    switch (ctx.state.brainProvider) {
+      case 'cli':
+        return 'Claude Code CLI · covered by Max plan'
+      case 'api':
+        return `API · key from ${ctx.state.keySource === 'settings' ? 'settings' : 'environment'}`
+      default:
+        return ctx.state.settings.provider === 'cli'
+          ? 'offline — Claude CLI not found on PATH'
+          : ctx.state.settings.provider === 'api'
+            ? 'offline — no API key set'
+            : 'offline — no CLI on PATH and no API key'
+    }
+  })()
+
+  const saveKey = (): void => {
+    const key = keyInput.trim()
+    if (!key) return
+    void window.taskdeck.setApiKey(key).then(() => {
+      setKeyInput('')
+      ctx.showToast('API key saved (encrypted)')
+    })
+  }
 
   return (
     <div className="overlay">
@@ -65,9 +104,65 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
                 flex: 'none'
               }}
             />
-            <span style={{ flex: 1 }}>Anthropic API</span>
+            <span style={{ flex: 1 }}>Status</span>
             <span className="mono" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
-              {brainLine}
+              {statusLine}
+            </span>
+          </div>
+          <div className="setting-row">
+            <span style={{ flex: 1 }}>Provider</span>
+            {PROVIDER_OPTIONS.map((p) => (
+              <button
+                key={p.id}
+                className="mini-btn"
+                title={p.hint}
+                style={s.provider === p.id ? { color: 'var(--teal)', borderColor: 'var(--teal-border-strong)' } : undefined}
+                onClick={() => void window.taskdeck.setSettings({ provider: p.id })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {modelSetting('Triage model', s.triageModel, (v) => void window.taskdeck.setSettings({ triageModel: v }))}
+          {modelSetting('Briefing model', s.briefingModel, (v) =>
+            void window.taskdeck.setSettings({ briefingModel: v })
+          )}
+          <div className="setting-row" style={{ alignItems: 'stretch', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flex: 1 }}>API key</span>
+              <span className="mono" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
+                {ctx.state.keySource === 'settings'
+                  ? 'set · stored encrypted'
+                  : ctx.state.keySource === 'env'
+                    ? 'from ANTHROPIC_API_KEY env'
+                    : 'not set'}
+              </span>
+              {ctx.state.keySource === 'settings' && (
+                <button
+                  className="mini-btn"
+                  style={{ color: 'var(--danger-soft)' }}
+                  onClick={() => void window.taskdeck.clearApiKey().then(() => ctx.showToast('API key removed'))}
+                >
+                  clear
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                className="key-input"
+                type="password"
+                placeholder="sk-ant-…"
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveKey()}
+              />
+              <button className="mini-btn" disabled={!keyInput.trim()} onClick={saveKey}>
+                save
+              </button>
+            </div>
+            <span style={{ fontSize: 10, color: 'var(--text-ghost)', lineHeight: 1.5 }}>
+              Only needed for the API provider. The CLI provider uses your logged-in Claude Code
+              (run `claude` once to sign in) and draws on your Max plan instead of API billing.
             </span>
           </div>
           {cost && (
@@ -87,11 +182,13 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
                   ${cost.totalUsd.toFixed(2)}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                  this month · {cost.calls} calls
+                  API cost this month · {cost.calls} calls
                 </span>
               </div>
               <div style={{ fontSize: 11, lineHeight: 1.55, color: 'var(--text-dim)' }}>
-                Routine triage runs on Haiku; the briefing uses Opus. Inbox is batched into one call.
+                {ctx.state.brainProvider === 'cli'
+                  ? 'CLI calls are covered by your Max plan — only token counts are recorded.'
+                  : 'Triage runs on the small model; the briefing uses the strong one. Inbox is batched into one call.'}
               </div>
               {cost.byPurpose.map((p) => (
                 <div key={p.purpose} className="mono" style={{ fontSize: 10, color: 'var(--text-faint)' }}>

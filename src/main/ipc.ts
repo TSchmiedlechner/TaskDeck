@@ -3,6 +3,7 @@ import type { Store } from './store'
 import type { Brain } from './brain'
 import type { Scheduler } from './scheduler'
 import { nextMonday } from './logic'
+import { clearApiKey, setApiKey } from './keystore'
 import type { Briefing, DeckState, Item, Settings, StructureProposal } from '@shared/types'
 
 export interface IpcDeps {
@@ -29,6 +30,9 @@ export function registerIpc(deps: IpcDeps): void {
       suggestions: store.listPendingSuggestions(),
       settings: store.getSettings(),
       brainStatus: brain.status,
+      brainProvider: brain.providerId,
+      keySource: brain.keySource,
+      cliAvailable: brain.cliAvailable,
       pendingTriageCount: scheduler.pendingTriageCount()
     }
   })
@@ -105,9 +109,23 @@ export function registerIpc(deps: IpcDeps): void {
 
   ipcMain.handle('activity:list', (_e, limit: number, itemId?: string) => store.listActivity(limit, itemId))
 
-  ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => {
+  ipcMain.handle('settings:set', async (_e, patch: Partial<Settings>) => {
     const merged = store.setSettings(patch)
     if ('privacyMode' in patch) applyPrivacyMode(merged.privacyMode)
+    if ('provider' in patch) await brain.redetectCli()
+    notifyAndScan()
+  })
+
+  ipcMain.handle('apikey:set', async (_e, key: string) => {
+    setApiKey(store, String(key ?? ''))
+    store.logActivity(null, 'you', 'API key updated in settings')
+    await brain.redetectCli()
+    notifyAndScan()
+  })
+
+  ipcMain.handle('apikey:clear', (_e) => {
+    clearApiKey(store)
+    store.logActivity(null, 'you', 'API key removed from settings')
     notifyAndScan()
   })
 

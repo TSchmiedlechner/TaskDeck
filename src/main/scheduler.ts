@@ -65,7 +65,7 @@ export class Scheduler {
   }
 
   private async runTriage(): Promise<void> {
-    if (this.triaging || this.brain.status === 'no-key') return
+    if (this.triaging || this.brain.status === 'offline') return
     const cutoff = Date.now() - 60_000
     const batch = this.untriaged().filter((i) => (this.attempted.get(i.id) ?? 0) < cutoff)
     if (batch.length === 0) return

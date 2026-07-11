@@ -44,15 +44,28 @@ Only the AI calls leave the machine.
 ## Setup
 
 ```powershell
-# API key for the triage brain (omit to run in agent-offline mode)
-setx ANTHROPIC_API_KEY "sk-ant-..."
-
 npm install
 npm run dev        # development with hot reload
 npm run build      # production build to out/
 npm run typecheck  # tsc over main+preload and renderer
 npm test           # vitest unit tests
 ```
+
+### Agent backends
+
+The brain is provider-pluggable (Settings → Agent → Provider):
+
+| Provider | Auth | Billing | Notes |
+| --- | --- | --- | --- |
+| `cli` | logged-in Claude Code (`claude` on PATH) | **covered by your Max plan** | headless `claude -p --output-format json`; schema prompt-enforced + Zod-validated with one retry |
+| `api` | API key | pay per token | schema enforced by the API (`output_config.format`) |
+| `auto` (default) | — | — | prefers `cli` when available, else `api` when a key is set, else offline |
+
+The API key can be entered on the Settings page (stored encrypted via Windows DPAPI /
+`safeStorage`) or provided via the `ANTHROPIC_API_KEY` environment variable; a settings-stored key
+wins. CLI calls strip `ANTHROPIC_API_KEY` from the child environment so they always bill against
+the subscription, never the key. Triage and briefing models are selectable in Settings
+(defaults: Haiku 4.5 for triage, Opus 4.8 for the briefing).
 
 ## Architecture
 

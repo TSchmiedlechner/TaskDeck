@@ -73,7 +73,11 @@ export default function App(): React.JSX.Element {
   const ctx: DeckContext = { state, suggestionsByItem, showToast, refresh }
   const pending = state.suggestions.length
   const brainLabel =
-    state.brainStatus === 'ready' ? 'agent ready' : state.brainStatus === 'no-key' ? 'agent offline (no key)' : 'agent error'
+    state.brainStatus === 'ready'
+      ? `agent ready · ${state.brainProvider === 'cli' ? 'cli (max)' : 'api'}`
+      : state.brainStatus === 'offline'
+        ? 'agent offline'
+        : 'agent error'
   const capFull = nowItems.length >= state.settings.nowCap
   const dateLabel = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 

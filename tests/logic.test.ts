@@ -4,12 +4,22 @@ import {
   findChaseItems,
   findNowOverflowCandidate,
   findStaleItems,
-  nextMonday
+  nextMonday,
+  resolveProviderId
 } from '../src/main/logic'
+import { extractFirstJson } from '../src/main/providers'
 import { ageChip, daysSince, isSnoozed } from '../src/shared/format'
 import type { Item, Settings } from '../src/shared/types'
 
-const SETTINGS: Settings = { nowCap: 5, stalenessDays: 10, chaseDays: 3, privacyMode: true }
+const SETTINGS: Settings = {
+  nowCap: 5,
+  stalenessDays: 10,
+  chaseDays: 3,
+  privacyMode: true,
+  provider: 'auto',
+  triageModel: 'claude-haiku-4-5',
+  briefingModel: 'claude-opus-4-8'
+}
 
 function makeItem(overrides: Partial<Item>): Item {
   const now = new Date().toISOString()
@@ -106,6 +116,38 @@ describe('cost', () => {
     expect(computeCostUsd('claude-haiku-4-5', 0, 1_000_000)).toBeCloseTo(5.0)
     expect(computeCostUsd('claude-opus-4-8', 100_000, 10_000)).toBeCloseTo(0.75)
     expect(computeCostUsd('unknown-model', 1000, 1000)).toBe(0)
+  })
+})
+
+describe('provider resolution', () => {
+  it('auto prefers the CLI, then falls back to the API key', () => {
+    expect(resolveProviderId('auto', true, true)).toBe('cli')
+    expect(resolveProviderId('auto', true, false)).toBe('cli')
+    expect(resolveProviderId('auto', false, true)).toBe('api')
+    expect(resolveProviderId('auto', false, false)).toBeNull()
+  })
+
+  it('explicit prefs never silently switch backends', () => {
+    expect(resolveProviderId('cli', false, true)).toBeNull()
+    expect(resolveProviderId('api', true, false)).toBeNull()
+    expect(resolveProviderId('cli', true, false)).toBe('cli')
+    expect(resolveProviderId('api', false, true)).toBe('api')
+  })
+})
+
+describe('extractFirstJson', () => {
+  it('parses bare JSON', () => {
+    expect(extractFirstJson('{"a":1}')).toBe('{"a":1}')
+  })
+
+  it('strips markdown fences and surrounding prose', () => {
+    expect(extractFirstJson('```json\n{"a": 1}\n```')).toBe('{"a": 1}')
+    expect(extractFirstJson('Here you go:\n{"a":{"b":2}}\nHope that helps!')).toBe('{"a":{"b":2}}')
+  })
+
+  it('returns null when there is no object', () => {
+    expect(extractFirstJson('no json here')).toBeNull()
+    expect(extractFirstJson('')).toBeNull()
   })
 })
 

@@ -54,6 +54,7 @@ export interface ModelPricing {
 
 export const PRICING: Record<string, ModelPricing> = {
   'claude-haiku-4-5': { inputPerMTok: 1.0, outputPerMTok: 5.0 },
+  'claude-sonnet-5': { inputPerMTok: 3.0, outputPerMTok: 15.0 },
   'claude-opus-4-8': { inputPerMTok: 5.0, outputPerMTok: 25.0 }
 }
 
@@ -61,4 +62,19 @@ export function computeCostUsd(model: string, inputTokens: number, outputTokens:
   const p = PRICING[model]
   if (!p) return 0
   return (inputTokens * p.inputPerMTok + outputTokens * p.outputPerMTok) / 1_000_000
+}
+
+/**
+ * Which backend serves the next call. 'auto' prefers the CLI (subscription-covered),
+ * then falls back to the API when a key is available.
+ */
+export function resolveProviderId(
+  pref: 'auto' | 'cli' | 'api',
+  cliAvailable: boolean,
+  hasApiKey: boolean
+): 'cli' | 'api' | null {
+  if (pref === 'cli') return cliAvailable ? 'cli' : null
+  if (pref === 'api') return hasApiKey ? 'api' : null
+  if (cliAvailable) return 'cli'
+  return hasApiKey ? 'api' : null
 }
