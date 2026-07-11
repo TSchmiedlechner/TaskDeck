@@ -45,3 +45,27 @@ export function resolveApiKey(store: Store): { key: string; source: 'settings' |
   if (env) return { key: env, source: 'env' }
   return null
 }
+
+/** Generic encrypted-at-rest kv storage (used for the MSAL token cache). */
+export function setEncryptedKv(store: Store, kvKey: string, value: string): void {
+  if (!value) {
+    store.setKv(kvKey, '')
+    return
+  }
+  const payload: StoredKey = safeStorage.isEncryptionAvailable()
+    ? { data: safeStorage.encryptString(value).toString('base64'), encrypted: true }
+    : { data: Buffer.from(value, 'utf8').toString('base64'), encrypted: false }
+  store.setKv(kvKey, JSON.stringify(payload))
+}
+
+export function getEncryptedKv(store: Store, kvKey: string): string | null {
+  const raw = store.getKv(kvKey)
+  if (!raw) return null
+  try {
+    const payload = JSON.parse(raw) as StoredKey
+    const buf = Buffer.from(payload.data, 'base64')
+    return payload.encrypted ? safeStorage.decryptString(buf) : buf.toString('utf8')
+  } catch {
+    return null
+  }
+}

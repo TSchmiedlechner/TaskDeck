@@ -5,6 +5,7 @@ import type {
   BrainStatus,
   Briefing,
   Item,
+  Meeting,
   Settings,
   StructureProposal
 } from '@shared/types'
@@ -163,12 +164,12 @@ export class Brain {
   }
 
   /** Compose the morning briefing with the strong model. Deterministic fallback when offline. */
-  async composeBriefing(items: Item[], settings: Settings): Promise<Briefing> {
+  async composeBriefing(items: Item[], settings: Settings, meetings: Meeting[] = []): Promise<Briefing> {
     const date = new Date().toISOString().slice(0, 10)
     const active = items.filter((i) => i.bucket !== 'done' && i.completedAt === null)
     const provider = this.resolveProvider()
 
-    if (!provider) return this.fallbackBriefing(date, active, settings)
+    if (!provider) return this.fallbackBriefing(date, active, settings, meetings)
 
     const now = new Date()
     const describe = (i: Item): Record<string, unknown> => ({
@@ -182,9 +183,23 @@ export class Brain {
       daysSinceTouched: Math.floor((now.getTime() - new Date(i.updatedAt).getTime()) / 86_400_000)
     })
 
+    const meetingLines =
+      meetings.length > 0
+        ? `Today's calendar:\n` +
+          meetings
+            .map((m) =>
+              m.isAllDay
+                ? `- all day: ${m.subject}`
+                : `- ${new Date(m.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${m.subject}`
+            )
+            .join('\n') +
+          '\n\n'
+        : ''
+
     const userContent =
       `Today is ${date} (${now.toLocaleDateString('en-US', { weekday: 'long' })}).\n` +
       `The "Now" list is hard-capped at ${settings.nowCap} items. Staleness threshold: ${settings.stalenessDays} days.\n\n` +
+      meetingLines +
       `Current items:\n${JSON.stringify(active.map(describe), null, 2)}\n\n` +
       `Compose the morning briefing:\n` +
       `- headline: one short sentence setting up the day.\n` +
@@ -192,6 +207,7 @@ export class Brain {
       `- proposedNow: the <= ${settings.nowCap} item ids that deserve today's focus (may include items currently in inbox/next). Give a short reason where it isn't obvious.\n` +
       `- demotions: item ids currently in 'now' that should move to 'next' today, each with a reason.\n` +
       `- note: one optional closing thought or null.\n` +
+      `Factor the calendar into the plan (meeting prep, realistic capacity on packed days). ` +
       `Only reference item ids that exist. Be direct and concrete, no filler.`
 
     try {
@@ -206,11 +222,12 @@ export class Brain {
       this.track(provider.id, 'briefing', settings.briefingModel, response.inputTokens, response.outputTokens)
       this.lastCallFailed = false
       const parsed = response.parsed
-      if (!parsed) return this.fallbackBriefing(date, active, settings)
+      if (!parsed) return this.fallbackBriefing(date, active, settings, meetings)
       const validIds = new Set(active.map((i) => i.id))
       return {
         date,
         headline: parsed.headline,
+        meetings,
         needsAttention: parsed.needsAttention.slice(0, 4),
         proposedNow: parsed.proposedNow.filter((p) => validIds.has(p.itemId)).slice(0, settings.nowCap),
         demotions: parsed.demotions.filter((d) => validIds.has(d.itemId)),
@@ -220,12 +237,12 @@ export class Brain {
     } catch (err) {
       this.lastCallFailed = true
       this.store.logActivity(null, 'system', `Briefing call failed (${provider.id}): ${(err as Error).message}`)
-      return this.fallbackBriefing(date, active, settings)
+      return this.fallbackBriefing(date, active, settings, meetings)
     }
   }
 
   /** Deterministic briefing when the agent is unavailable: deadline- and priority-driven. */
-  private fallbackBriefing(date: string, active: Item[], settings: Settings): Briefing {
+  private fallbackBriefing(date: string, active: Item[], settings: Settings, meetings: Meeting[]): Briefing {
     const now = new Date()
     const candidates = active
       .filter((i) => i.bucket === 'now' || i.bucket === 'next')
@@ -244,6 +261,7 @@ export class Brain {
     return {
       date,
       headline: 'Agent offline — deadline-ordered plan.',
+      meetings,
       needsAttention: [
         ...overdue.map((i) => `"${i.title}" is past its deadline (${i.deadline}).`),
         ...quiet.map((i) => `Waiting on ${i.owner ?? 'someone'} for "${i.title}" — quiet for a while.`)

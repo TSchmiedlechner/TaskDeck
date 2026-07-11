@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { BrainProviderPref, CostSummary } from '@shared/types'
+import type { BrainProviderPref, CostSummary, DeviceCodePrompt } from '@shared/types'
 import { MODEL_OPTIONS } from '@shared/types'
 import type { DeckContext } from '../App'
 
@@ -13,7 +13,24 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
   const [cost, setCost] = useState<CostSummary | null>(null)
   const [keyInput, setKeyInput] = useState('')
   const [hotkeyInput, setHotkeyInput] = useState<string | null>(null)
+  const [deviceCode, setDeviceCode] = useState<DeviceCodePrompt | null>(null)
+  const [signingIn, setSigningIn] = useState(false)
   const s = ctx.state.settings
+  const outlook = ctx.state.outlook
+
+  useEffect(() => {
+    return window.taskdeck.onDeviceCode(setDeviceCode)
+  }, [])
+
+  const outlookSignIn = (): void => {
+    setSigningIn(true)
+    setDeviceCode(null)
+    void window.taskdeck.outlookSignIn().then((ok) => {
+      setSigningIn(false)
+      setDeviceCode(null)
+      ctx.showToast(ok ? 'Outlook connected' : 'Outlook sign-in failed')
+    })
+  }
 
   const saveHotkey = (): void => {
     const accel = (hotkeyInput ?? '').trim()
@@ -208,6 +225,92 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
                   {p.purpose}: ${p.costUsd.toFixed(3)} ({p.calls} calls)
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="label" style={{ color: 'var(--text-faint)' }}>
+            Outlook · read-only
+          </div>
+          <div className="setting-row">
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: outlook.signedIn ? 'var(--teal)' : 'var(--text-ghost)',
+                flex: 'none'
+              }}
+            />
+            <span style={{ flex: 1 }}>
+              {outlook.signedIn ? (outlook.account ?? 'connected') : 'not connected'}
+            </span>
+            <span className="mono" style={{ fontSize: 10, color: outlook.error ? 'var(--amber)' : 'var(--text-faint)' }}>
+              {outlook.error
+                ? outlook.error.slice(0, 40)
+                : outlook.lastSync
+                  ? `synced ${new Date(outlook.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : ''}
+            </span>
+            {outlook.signedIn ? (
+              <>
+                <button className="mini-btn" onClick={() => void window.taskdeck.outlookSyncNow()}>
+                  sync
+                </button>
+                <button
+                  className="mini-btn"
+                  style={{ color: 'var(--danger-soft)' }}
+                  onClick={() => void window.taskdeck.outlookSignOut()}
+                >
+                  sign out
+                </button>
+              </>
+            ) : (
+              <button className="mini-btn" disabled={!outlook.configured || signingIn} onClick={outlookSignIn}>
+                {signingIn ? 'waiting…' : 'sign in'}
+              </button>
+            )}
+          </div>
+          {deviceCode && signingIn && (
+            <div className="setting-row" style={{ borderColor: 'var(--teal-border)', flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                Enter this code at the Microsoft sign-in page:
+              </span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span className="mono" style={{ fontSize: 16, letterSpacing: '0.1em', color: 'var(--teal-bright)' }}>
+                  {deviceCode.userCode}
+                </span>
+                <button
+                  className="mini-btn"
+                  onClick={() => {
+                    void window.taskdeck.copyToClipboard(deviceCode.userCode)
+                    void window.taskdeck.openExternal(deviceCode.verificationUri)
+                  }}
+                >
+                  copy + open sign-in page
+                </button>
+              </div>
+            </div>
+          )}
+          {!outlook.configured && (
+            <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+              <span style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--text-dim)' }}>
+                Needs an Entra app registration (delegated Mail.Read + Calendars.Read, public client
+                flows enabled). Paste its ids here:
+              </span>
+              <input
+                className="key-input"
+                placeholder="Application (client) ID"
+                defaultValue={s.outlookClientId}
+                onBlur={(e) => void window.taskdeck.setSettings({ outlookClientId: e.target.value.trim() })}
+              />
+              <input
+                className="key-input"
+                placeholder="Directory (tenant) ID"
+                defaultValue={s.outlookTenantId}
+                onBlur={(e) => void window.taskdeck.setSettings({ outlookTenantId: e.target.value.trim() })}
+              />
             </div>
           )}
         </div>

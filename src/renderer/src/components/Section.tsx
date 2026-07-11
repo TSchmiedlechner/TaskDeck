@@ -81,6 +81,16 @@ function ItemRow({
       <div className="item-main">
         <span className="item-dot" style={{ background: isRaw ? 'var(--text-ghost)' : DOT_COLORS[item.type] }} />
         <span className={`item-title ${isRaw ? 'raw' : ''}`}>{item.title}</span>
+        {item.url && (
+          <button
+            className="icon-btn"
+            title="Open in source"
+            style={{ fontSize: 11, padding: '0 2px' }}
+            onClick={() => void window.taskdeck.openExternal(item.url!)}
+          >
+            ↗
+          </button>
+        )}
         <span className={`item-right ${chip.warn ? 'warn' : ''}`}>{chip.text}</span>
       </div>
       {meta && <div className="item-meta">{meta}</div>}

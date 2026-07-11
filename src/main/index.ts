@@ -4,6 +4,7 @@ import trayIconPath from '../../resources/tray.png?asset'
 import { Store } from './store'
 import { Brain } from './brain'
 import { Scheduler } from './scheduler'
+import { OutlookSync } from './outlook'
 import { registerIpc } from './ipc'
 import { createCaptureWindow, createDeckWindow, positionCaptureWindow } from './windows'
 
@@ -31,6 +32,10 @@ if (!gotLock) {
     }
 
     const scheduler = new Scheduler(store, brain, broadcast)
+
+    const outlook = new OutlookSync(store, broadcast, (prompt) => {
+      deckWin?.webContents.send('outlook-devicecode', prompt)
+    })
 
     deckWin = createDeckWindow(settings.privacyMode)
     captureWin = createCaptureWindow(settings.privacyMode)
@@ -96,12 +101,21 @@ if (!gotLock) {
       store,
       brain,
       scheduler,
+      outlook,
       broadcast,
       openCapture,
       closeCapture,
       applyPrivacyMode,
       applyHotkey,
       applyLaunchAtLogin
+    })
+
+    // Resume mail/calendar sync when a cached Outlook session exists.
+    void outlook.state().then((s) => {
+      if (s.signedIn) {
+        outlook.start()
+        void outlook.syncNow()
+      }
     })
 
     if (!applyHotkey(settings.captureHotkey)) {
@@ -137,6 +151,7 @@ if (!gotLock) {
     app.on('will-quit', () => {
       globalShortcut.unregisterAll()
       scheduler.stop()
+      outlook.stop()
       tray?.destroy()
     })
   })

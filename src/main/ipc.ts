@@ -1,7 +1,8 @@
-import { clipboard, ipcMain } from 'electron'
+import { clipboard, ipcMain, shell } from 'electron'
 import type { Store } from './store'
 import type { Brain } from './brain'
 import type { Scheduler } from './scheduler'
+import type { OutlookSync } from './outlook'
 import { nextMonday } from './logic'
 import { clearApiKey, setApiKey } from './keystore'
 import type { Briefing, DeckState, Item, Settings, StructureProposal } from '@shared/types'
@@ -10,6 +11,7 @@ export interface IpcDeps {
   store: Store
   brain: Brain
   scheduler: Scheduler
+  outlook: OutlookSync
   broadcast: () => void
   openCapture: () => void
   closeCapture: () => void
@@ -19,14 +21,25 @@ export interface IpcDeps {
 }
 
 export function registerIpc(deps: IpcDeps): void {
-  const { store, brain, scheduler, broadcast, openCapture, closeCapture, applyPrivacyMode, applyHotkey, applyLaunchAtLogin } = deps
+  const {
+    store,
+    brain,
+    scheduler,
+    outlook,
+    broadcast,
+    openCapture,
+    closeCapture,
+    applyPrivacyMode,
+    applyHotkey,
+    applyLaunchAtLogin
+  } = deps
 
   const notifyAndScan = (): void => {
     scheduler.onMutation()
     broadcast()
   }
 
-  ipcMain.handle('state:get', (): DeckState => {
+  ipcMain.handle('state:get', async (): Promise<DeckState> => {
     return {
       items: store.listItems(),
       suggestions: store.listPendingSuggestions(),
@@ -35,7 +48,8 @@ export function registerIpc(deps: IpcDeps): void {
       brainProvider: brain.providerId,
       keySource: brain.keySource,
       cliAvailable: brain.cliAvailable,
-      pendingTriageCount: scheduler.pendingTriageCount()
+      pendingTriageCount: scheduler.pendingTriageCount(),
+      outlook: await outlook.state()
     }
   })
 
@@ -80,7 +94,7 @@ export function registerIpc(deps: IpcDeps): void {
       const cached = store.getKv(cacheKey)
       if (cached) return JSON.parse(cached)
     }
-    const briefing = await brain.composeBriefing(store.listItems(), store.getSettings())
+    const briefing = await brain.composeBriefing(store.listItems(), store.getSettings(), outlook.todayEvents)
     store.setKv(cacheKey, JSON.stringify(briefing))
     store.logActivity(null, 'agent', `Morning briefing generated (${briefing.generatedBy})`)
     broadcast()
@@ -151,6 +165,27 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle('capture:open', () => openCapture())
   ipcMain.handle('capture:close', () => closeCapture())
   ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(text))
+
+  ipcMain.handle('outlook:signin', async (): Promise<boolean> => {
+    const ok = await outlook.signIn()
+    notifyAndScan()
+    return ok
+  })
+
+  ipcMain.handle('outlook:signout', async () => {
+    await outlook.signOut()
+    broadcast()
+  })
+
+  ipcMain.handle('outlook:sync', async () => {
+    await outlook.syncNow()
+    notifyAndScan()
+  })
+
+  ipcMain.handle('shell:openExternal', (_e, url: string) => {
+    const parsed = new URL(String(url))
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') void shell.openExternal(parsed.href)
+  })
 }
 
 function describePatch(patch: Partial<Item>): string {

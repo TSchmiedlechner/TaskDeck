@@ -21,7 +21,9 @@ const DEFAULT_SETTINGS: Settings = {
   briefingModel: 'claude-opus-4-8',
   captureHotkey: 'Control+Shift+Space',
   launchAtLogin: true,
-  autoBriefing: true
+  autoBriefing: true,
+  outlookClientId: '',
+  outlookTenantId: ''
 }
 
 export class Store {
@@ -51,7 +53,9 @@ export class Store {
         updated_at TEXT NOT NULL,
         snoozed_until TEXT,
         completed_at TEXT,
-        last_nudge_at TEXT
+        last_nudge_at TEXT,
+        external_id TEXT,
+        url TEXT
       );
       CREATE TABLE IF NOT EXISTS suggestions (
         id TEXT PRIMARY KEY,
@@ -87,6 +91,19 @@ export class Store {
         value TEXT NOT NULL
       );
     `)
+
+    // v1: external_id + url on items (databases created before the Outlook integration)
+    const version = (this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
+    if (version < 1) {
+      for (const column of ['external_id TEXT', 'url TEXT']) {
+        try {
+          this.db.exec(`ALTER TABLE items ADD COLUMN ${column}`)
+        } catch {
+          // column already exists (fresh database created with the current schema)
+        }
+      }
+      this.db.exec('PRAGMA user_version = 1')
+    }
   }
 
   // ---- items ----
@@ -103,6 +120,8 @@ export class Store {
       owner: (r.owner as string) ?? null,
       meta: (r.meta as string) ?? null,
       source: r.source as Item['source'],
+      externalId: (r.external_id as string) ?? null,
+      url: (r.url as string) ?? null,
       links: JSON.parse(r.links as string),
       createdAt: r.created_at as string,
       updatedAt: r.updated_at as string,
@@ -127,18 +146,50 @@ export class Store {
   }
 
   createCapture(text: string): Item {
+    return this.insertInboxItem({
+      title: text,
+      rawText: text,
+      meta: `quick capture · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      source: 'capture',
+      externalId: null,
+      url: null
+    })
+  }
+
+  /** Insert an integration-sourced inbox candidate (deduped by externalId by the caller). */
+  createExternalItem(fields: {
+    title: string
+    rawText: string
+    meta: string
+    source: Item['source']
+    externalId: string
+    url: string | null
+  }): Item {
+    return this.insertInboxItem(fields)
+  }
+
+  private insertInboxItem(fields: {
+    title: string
+    rawText: string
+    meta: string
+    source: Item['source']
+    externalId: string | null
+    url: string | null
+  }): Item {
     const now = new Date().toISOString()
     const item: Item = {
       id: randomUUID(),
-      title: text,
-      rawText: text,
+      title: fields.title,
+      rawText: fields.rawText,
       bucket: 'inbox',
       type: 'do',
       priority: null,
       deadline: null,
       owner: null,
-      meta: `quick capture · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      source: 'capture',
+      meta: fields.meta,
+      source: fields.source,
+      externalId: fields.externalId,
+      url: fields.url,
       links: [],
       createdAt: now,
       updatedAt: now,
@@ -148,11 +199,31 @@ export class Store {
     }
     this.db
       .prepare(
-        `INSERT INTO items (id, title, raw_text, bucket, type, source, meta, links, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO items (id, title, raw_text, bucket, type, source, meta, links, created_at, updated_at, external_id, url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(item.id, item.title, item.rawText, item.bucket, item.type, item.source, item.meta, '[]', now, now)
+      .run(
+        item.id,
+        item.title,
+        item.rawText,
+        item.bucket,
+        item.type,
+        item.source,
+        item.meta,
+        '[]',
+        now,
+        now,
+        item.externalId,
+        item.url
+      )
     return item
+  }
+
+  getItemByExternalId(externalId: string): Item | null {
+    const r = this.db.prepare(`SELECT * FROM items WHERE external_id = ?`).get(externalId) as
+      | Record<string, unknown>
+      | undefined
+    return r ? this.rowToItem(r) : null
   }
 
   updateItem(id: string, patch: Partial<Item>, touch = true): void {
@@ -163,7 +234,7 @@ export class Store {
     this.db
       .prepare(
         `UPDATE items SET title=?, raw_text=?, bucket=?, type=?, priority=?, deadline=?, owner=?, meta=?,
-         links=?, updated_at=?, snoozed_until=?, completed_at=?, last_nudge_at=? WHERE id=?`
+         links=?, updated_at=?, snoozed_until=?, completed_at=?, last_nudge_at=?, external_id=?, url=? WHERE id=?`
       )
       .run(
         merged.title,
@@ -179,13 +250,34 @@ export class Store {
         merged.snoozedUntil,
         merged.completedAt,
         merged.lastNudgeAt,
+        merged.externalId,
+        merged.url,
         id
       )
   }
 
-  deleteItem(id: string): void {
+  /**
+   * `tombstone` (default) remembers dismissed integration items so the next sync doesn't
+   * resurrect them. Sync-driven removals (mail handled in Outlook) pass false, so the item
+   * can come back if it matches again later.
+   */
+  deleteItem(id: string, tombstone = true): void {
+    const item = this.getItem(id)
+    if (tombstone && item?.externalId) this.addTombstone(item.externalId)
     this.db.prepare(`DELETE FROM items WHERE id = ?`).run(id)
     this.db.prepare(`DELETE FROM suggestions WHERE item_id = ?`).run(id)
+  }
+
+  private addTombstone(externalId: string): void {
+    const list = this.tombstones()
+    if (list.includes(externalId)) return
+    list.push(externalId)
+    this.setKv('externalTombstones', JSON.stringify(list.slice(-500)))
+  }
+
+  tombstones(): string[] {
+    const raw = this.getKv('externalTombstones')
+    return raw ? (JSON.parse(raw) as string[]) : []
   }
 
   listOwners(): string[] {

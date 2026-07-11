@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Briefing, Item, Settings, TaskdeckApi } from '@shared/types'
+import type { Briefing, DeviceCodePrompt, Item, Settings, TaskdeckApi } from '@shared/types'
 
 const api: TaskdeckApi = {
   getState: () => ipcRenderer.invoke('state:get'),
@@ -17,6 +17,10 @@ const api: TaskdeckApi = {
   setApiKey: (key: string) => ipcRenderer.invoke('apikey:set', key),
   clearApiKey: () => ipcRenderer.invoke('apikey:clear'),
   setHotkey: (accelerator: string) => ipcRenderer.invoke('hotkey:set', accelerator),
+  outlookSignIn: () => ipcRenderer.invoke('outlook:signin'),
+  outlookSignOut: () => ipcRenderer.invoke('outlook:signout'),
+  outlookSyncNow: () => ipcRenderer.invoke('outlook:sync'),
+  openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   listOwners: () => ipcRenderer.invoke('owners:list'),
   openCapture: () => ipcRenderer.invoke('capture:open'),
   closeCapture: () => ipcRenderer.invoke('capture:close'),
@@ -35,6 +39,11 @@ const api: TaskdeckApi = {
     const listener = (): void => cb()
     ipcRenderer.on('show-briefing', listener)
     return () => ipcRenderer.removeListener('show-briefing', listener)
+  },
+  onDeviceCode: (cb: (prompt: DeviceCodePrompt) => void) => {
+    const listener = (_e: unknown, prompt: DeviceCodePrompt): void => cb(prompt)
+    ipcRenderer.on('outlook-devicecode', listener)
+    return () => ipcRenderer.removeListener('outlook-devicecode', listener)
   }
 }
 

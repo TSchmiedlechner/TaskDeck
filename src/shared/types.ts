@@ -16,7 +16,11 @@ export interface Item {
   owner: string | null
   /** Short source/context note shown under the title */
   meta: string | null
-  source: 'capture' | 'manual'
+  source: 'capture' | 'manual' | 'outlook'
+  /** Stable id in the source system (e.g. Graph message id) for sync dedupe */
+  externalId: string | null
+  /** Deep link back into the source (e.g. Outlook web link) */
+  url: string | null
   links: string[]
   createdAt: string
   updatedAt: string
@@ -90,6 +94,30 @@ export interface Settings {
   launchAtLogin: boolean
   /** Open the briefing automatically on the first interaction of each day */
   autoBriefing: boolean
+  /** Entra app registration for Microsoft Graph (Outlook). Empty = not configured. */
+  outlookClientId: string
+  outlookTenantId: string
+}
+
+export interface OutlookState {
+  configured: boolean
+  signedIn: boolean
+  account: string | null
+  lastSync: string | null
+  error: string | null
+}
+
+export interface DeviceCodePrompt {
+  userCode: string
+  verificationUri: string
+}
+
+export interface Meeting {
+  /** ISO start time (UTC) */
+  start: string
+  end: string
+  subject: string
+  isAllDay: boolean
 }
 
 export interface ModelOption {
@@ -120,6 +148,8 @@ export interface BriefingNowPick {
 export interface Briefing {
   date: string
   headline: string
+  /** Today's calendar (from Outlook when connected) */
+  meetings: Meeting[]
   needsAttention: string[]
   proposedNow: BriefingNowPick[]
   /** Items currently in Now that should move to Next */
@@ -142,6 +172,7 @@ export interface DeckState {
   keySource: ApiKeySource
   cliAvailable: boolean
   pendingTriageCount: number
+  outlook: OutlookState
 }
 
 /** API exposed to the renderer via the preload bridge */
@@ -161,6 +192,11 @@ export interface TaskdeckApi {
   clearApiKey(): Promise<void>
   /** Try to register a new capture hotkey; returns false (and keeps the old one) if the OS rejects it */
   setHotkey(accelerator: string): Promise<boolean>
+  /** Starts the device-code sign-in; resolves when completed or failed. Code arrives via onDeviceCode. */
+  outlookSignIn(): Promise<boolean>
+  outlookSignOut(): Promise<void>
+  outlookSyncNow(): Promise<void>
+  openExternal(url: string): Promise<void>
   listOwners(): Promise<string[]>
   openCapture(): Promise<void>
   closeCapture(): Promise<void>
@@ -168,4 +204,5 @@ export interface TaskdeckApi {
   onStateChanged(cb: () => void): () => void
   onCaptureShown(cb: () => void): () => void
   onShowBriefing(cb: () => void): () => void
+  onDeviceCode(cb: (prompt: DeviceCodePrompt) => void): () => void
 }

@@ -41,6 +41,23 @@ export function BriefingOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
         )}
         {!loading && briefing && (
           <>
+            {briefing.meetings.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="label" style={{ color: 'var(--text-faint)' }}>
+                  Today
+                </div>
+                {briefing.meetings.map((m, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 10, fontSize: 12, color: 'var(--text-mid)' }}>
+                    <span className="mono" style={{ color: 'var(--text-chip)', width: 42, flex: 'none' }}>
+                      {m.isAllDay
+                        ? 'all day'
+                        : new Date(m.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span>{m.subject}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {briefing.needsAttention.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div className="label" style={{ color: 'var(--text-faint)' }}>

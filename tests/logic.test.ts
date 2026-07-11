@@ -21,7 +21,9 @@ const SETTINGS: Settings = {
   briefingModel: 'claude-opus-4-8',
   captureHotkey: 'Control+Shift+Space',
   launchAtLogin: true,
-  autoBriefing: true
+  autoBriefing: true,
+  outlookClientId: '',
+  outlookTenantId: ''
 }
 
 function makeItem(overrides: Partial<Item>): Item {
@@ -37,6 +39,8 @@ function makeItem(overrides: Partial<Item>): Item {
     owner: null,
     meta: null,
     source: 'capture',
+    externalId: null,
+    url: null,
     links: [],
     createdAt: now,
     updatedAt: now,
