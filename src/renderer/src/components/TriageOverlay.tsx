@@ -32,7 +32,7 @@ export function TriageOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: () 
 
   const current = queue[0]
 
-  const act = (actionId: 'accept' | 'snooze' | 'dismiss'): void => {
+  const act = (actionId: string): void => {
     if (!current?.suggestion) return
     void window.taskdeck.resolveSuggestion(current.suggestion.id, actionId)
   }
@@ -43,6 +43,9 @@ export function TriageOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: () 
       if (k === 'a') act('accept')
       else if (k === 'z') act('snooze')
       else if (k === 'd') act('dismiss')
+      else if (k === '1') act('accept-now')
+      else if (k === '2') act('accept-next')
+      else if (k === '3') act('accept-someday')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -136,25 +139,52 @@ export function TriageOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: () 
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 20px', borderTop: '1px solid var(--border-soft)' }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="wide-btn primary" onClick={() => act('accept')}>
+          <button
+            className="wide-btn primary"
+            title={`Apply the proposal and file it into ${proposal.bucket}`}
+            onClick={() => act('accept')}
+          >
             <span className="key-badge" style={{ borderColor: 'rgba(143,216,205,0.4)' }}>
               A
             </span>
             Accept
           </button>
-          <button className="wide-btn ghost" onClick={() => act('snooze')}>
+          <button
+            className="wide-btn ghost"
+            title="Hide until Monday 08:00, then resurface in the inbox"
+            onClick={() => act('snooze')}
+          >
             <span className="key-badge">Z</span>
             Monday
           </button>
-          <button className="wide-btn danger" onClick={() => act('dismiss')}>
+          <button
+            className="wide-btn danger"
+            title="Reject and delete this capture (a dismissed integration item won't come back)"
+            onClick={() => act('dismiss')}
+          >
             <span className="key-badge" style={{ borderColor: '#4a3630' }}>
               D
             </span>
             Dismiss
           </button>
         </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
+          <span className="mono" style={{ fontSize: 10, color: 'var(--text-ghost)' }}>
+            or file to:
+          </span>
+          {(['now', 'next', 'someday'] as const).map((b, idx) => (
+            <button
+              key={b}
+              className="mini-btn"
+              title={`Accept the proposal, but file it into ${b} instead (${idx + 1})`}
+              onClick={() => act(`accept-${b}`)}
+            >
+              {idx + 1} {b}
+            </button>
+          ))}
+        </div>
         <div className="mono" style={{ fontSize: 10, color: 'var(--text-ghost)', textAlign: 'center' }}>
-          keyboard: A accept · Z monday · D dismiss · esc exit
+          keyboard: A accept · Z monday · D dismiss · 1/2/3 file to now/next/someday · esc exit
         </div>
       </div>
     </div>

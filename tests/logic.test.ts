@@ -19,6 +19,7 @@ const SETTINGS: Settings = {
   provider: 'auto',
   triageModel: 'claude-haiku-4-5',
   briefingModel: 'claude-opus-4-8',
+  alwaysOnTop: true,
   captureHotkey: 'Control+Shift+Space',
   launchAtLogin: true,
   autoBriefing: true,

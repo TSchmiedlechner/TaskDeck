@@ -123,6 +123,7 @@ export function BriefingOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
       <div className="overlay-footer">
         <button
           className="wide-btn primary"
+          title="Apply this plan: promote the listed items to Now, move the demotions to Next"
           disabled={loading || !briefing}
           onClick={() => {
             if (!briefing) return
@@ -134,10 +135,20 @@ export function BriefingOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
         >
           Accept proposed Now
         </button>
-        <button className="wide-btn ghost" style={{ flex: 'none', padding: '9px 16px' }} onClick={() => load(true)}>
+        <button
+          className="wide-btn ghost"
+          title="Regenerate the briefing (new agent call)"
+          style={{ flex: 'none', padding: '9px 16px' }}
+          onClick={() => load(true)}
+        >
           ↻
         </button>
-        <button className="wide-btn ghost" style={{ flex: 'none', padding: '9px 16px' }} onClick={onClose}>
+        <button
+          className="wide-btn ghost"
+          title="Close without changing anything"
+          style={{ flex: 'none', padding: '9px 16px' }}
+          onClick={onClose}
+        >
           Skip
         </button>
       </div>

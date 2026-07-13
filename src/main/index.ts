@@ -43,7 +43,7 @@ if (!gotLock) {
     const github = new GithubSync(store, broadcast)
     const jira = new JiraSync(store, broadcast)
 
-    deckWin = createDeckWindow(settings.privacyMode)
+    deckWin = createDeckWindow(settings.privacyMode, settings.alwaysOnTop)
     captureWin = createCaptureWindow(settings.privacyMode)
 
     // Closing the deck hides it — TaskDeck lives in the tray until Quit.
@@ -103,6 +103,10 @@ if (!gotLock) {
       if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: on })
     }
 
+    const applyAlwaysOnTop = (on: boolean): void => {
+      if (deckWin && !deckWin.isDestroyed()) deckWin.setAlwaysOnTop(on, 'floating')
+    }
+
     registerIpc({
       store,
       brain,
@@ -115,7 +119,8 @@ if (!gotLock) {
       closeCapture,
       applyPrivacyMode,
       applyHotkey,
-      applyLaunchAtLogin
+      applyLaunchAtLogin,
+      applyAlwaysOnTop
     })
 
     // Resume connector syncs for whatever is already configured.

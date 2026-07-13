@@ -16,7 +16,7 @@ function load(win: BrowserWindow, page: 'index' | 'capture'): void {
   else void win.loadFile(target.file!)
 }
 
-export function createDeckWindow(privacyMode: boolean): BrowserWindow {
+export function createDeckWindow(privacyMode: boolean, alwaysOnTop: boolean): BrowserWindow {
   const wa = screen.getPrimaryDisplay().workArea
   const win = new BrowserWindow({
     width: DECK_WIDTH,
@@ -26,7 +26,7 @@ export function createDeckWindow(privacyMode: boolean): BrowserWindow {
     minWidth: 360,
     minHeight: 500,
     frame: false,
-    alwaysOnTop: true,
+    alwaysOnTop,
     backgroundColor: '#14161a',
     show: false,
     webPreferences: {
@@ -36,7 +36,7 @@ export function createDeckWindow(privacyMode: boolean): BrowserWindow {
       sandbox: false
     }
   })
-  win.setAlwaysOnTop(true, 'floating')
+  if (alwaysOnTop) win.setAlwaysOnTop(true, 'floating')
   win.setContentProtection(privacyMode)
   win.once('ready-to-show', () => win.show())
   win.webContents.setWindowOpenHandler(({ url }) => {
