@@ -100,6 +100,21 @@ export default function App(): React.JSX.Element {
         <span className="mono" style={{ fontSize: 10, color: 'var(--text-faint)', flex: 1 }}>
           {dateLabel}
         </span>
+        <button
+          className={`icon-btn ${state.settings.alwaysOnTop ? 'active' : ''}`}
+          title={
+            state.settings.alwaysOnTop
+              ? 'Pinned above other windows — click to unpin'
+              : 'Not pinned — click to keep the deck on top'
+          }
+          onClick={() => {
+            void window.taskdeck
+              .setSettings({ alwaysOnTop: !state.settings.alwaysOnTop })
+              .then(() => showToast(state.settings.alwaysOnTop ? 'Unpinned' : 'Pinned on top'))
+          }}
+        >
+          ⌖
+        </button>
         <button className="icon-btn" title="Morning briefing (B)" onClick={() => setOverlay('briefing')}>
           ☀
         </button>

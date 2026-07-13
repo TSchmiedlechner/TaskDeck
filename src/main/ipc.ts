@@ -25,6 +25,7 @@ export interface IpcDeps {
   applyPrivacyMode: (on: boolean) => void
   applyHotkey: (accelerator: string) => boolean
   applyLaunchAtLogin: (on: boolean) => void
+  applyAlwaysOnTop: (on: boolean) => void
 }
 
 export function registerIpc(deps: IpcDeps): void {
@@ -40,7 +41,8 @@ export function registerIpc(deps: IpcDeps): void {
     closeCapture,
     applyPrivacyMode,
     applyHotkey,
-    applyLaunchAtLogin
+    applyLaunchAtLogin,
+    applyAlwaysOnTop
   } = deps
 
   const notifyAndScan = (): void => {
@@ -73,6 +75,12 @@ export function registerIpc(deps: IpcDeps): void {
   })
 
   ipcMain.handle('items:update', (_e, id: string, patch: Partial<Item>) => {
+    // Moving an item out of the inbox implicitly answers its pending triage proposal:
+    // apply the proposed metadata, but respect the bucket the user chose.
+    const item = store.getItem(id)
+    if (patch.bucket && patch.bucket !== 'inbox' && item?.bucket === 'inbox') {
+      resolvePendingStructureOnMove(store, id)
+    }
     store.updateItem(id, patch)
     store.logActivity(id, 'you', describePatch(patch))
     notifyAndScan()
@@ -130,6 +138,9 @@ export function registerIpc(deps: IpcDeps): void {
       const item = store.getItem(pick.itemId)
       if (!item || item.completedAt) continue
       if (item.bucket !== 'now') {
+        // Promoting an inbox candidate resolves its pending proposal so the
+        // triage chip doesn't travel into Now with it.
+        if (item.bucket === 'inbox') resolvePendingStructureOnMove(store, item.id)
         store.updateItem(item.id, { bucket: 'now' })
         store.logActivity(item.id, 'agent', `Promoted to Now (briefing${pick.reason ? `: ${pick.reason}` : ''})`)
       }
@@ -153,6 +164,7 @@ export function registerIpc(deps: IpcDeps): void {
     if ('privacyMode' in patch) applyPrivacyMode(merged.privacyMode)
     if ('provider' in patch) await brain.redetectCli()
     if ('launchAtLogin' in patch) applyLaunchAtLogin(merged.launchAtLogin)
+    if ('alwaysOnTop' in patch) applyAlwaysOnTop(merged.alwaysOnTop)
     notifyAndScan()
   })
 
@@ -234,6 +246,29 @@ export function registerIpc(deps: IpcDeps): void {
   })
 }
 
+/**
+ * When an inbox item is moved manually, apply its pending proposal's metadata
+ * (clean title, type, priority, deadline, owner) and mark the suggestion accepted —
+ * the caller applies the user's chosen bucket afterwards.
+ */
+function resolvePendingStructureOnMove(store: Store, itemId: string): void {
+  const sugg = store.getPendingSuggestion(itemId, 'structure')
+  if (!sugg?.payload) return
+  const p = sugg.payload as unknown as StructureProposal
+  const item = store.getItem(itemId)
+  if (!item) return
+  store.updateItem(itemId, {
+    title: p.title,
+    type: p.type,
+    priority: p.priority,
+    deadline: p.deadline,
+    owner: p.owner ?? item.owner,
+    meta: p.extra ?? item.meta
+  })
+  store.resolveSuggestion(sugg.id, 'accepted', 'accept-move')
+  store.logActivity(itemId, 'you', 'Accepted proposal (moved manually)')
+}
+
 function describePatch(patch: Partial<Item>): string {
   if (patch.bucket) return `Moved to ${patch.bucket}`
   if (patch.title) return `Renamed to "${patch.title}"`
@@ -254,18 +289,29 @@ function applySuggestionAction(deps: IpcDeps, suggId: string, actionId: string, 
   switch (sugg.kind) {
     case 'structure': {
       const p = sugg.payload as unknown as StructureProposal
-      if (actionId === 'accept') {
+      // "accept-<bucket>" accepts the proposal but files it where the user says.
+      const overrides: Record<string, StructureProposal['bucket']> = {
+        'accept-now': 'now',
+        'accept-next': 'next',
+        'accept-someday': 'someday'
+      }
+      if (actionId === 'accept' || actionId in overrides) {
+        const bucket = overrides[actionId] ?? p.bucket
         store.updateItem(item.id, {
           title: p.title,
           type: p.type,
-          bucket: p.bucket,
+          bucket,
           priority: p.priority,
           deadline: p.deadline,
           owner: p.owner ?? item.owner,
           meta: p.extra ?? item.meta
         })
         store.resolveSuggestion(suggId, 'accepted', actionId)
-        store.logActivity(item.id, 'you', `Accepted proposal → ${p.bucket}`)
+        store.logActivity(
+          item.id,
+          'you',
+          `Accepted proposal → ${bucket}${bucket !== p.bucket ? ` (overrode suggested ${p.bucket})` : ''}`
+        )
       } else if (actionId === 'snooze') {
         store.updateItem(item.id, { snoozedUntil: nextMonday(new Date()) }, false)
         store.resolveSuggestion(suggId, 'rejected', actionId)

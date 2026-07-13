@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS: Settings = {
   provider: 'auto',
   triageModel: 'claude-haiku-4-5',
   briefingModel: 'claude-opus-4-8',
+  alwaysOnTop: true,
   captureHotkey: 'Control+Shift+Space',
   launchAtLogin: true,
   autoBriefing: true,
@@ -323,6 +324,13 @@ export class Store {
     const r = this.db.prepare(`SELECT * FROM suggestions WHERE id = ?`).get(id) as
       | Record<string, unknown>
       | undefined
+    return r ? this.rowToSuggestion(r) : null
+  }
+
+  getPendingSuggestion(itemId: string, kind: SuggestionKind): Suggestion | null {
+    const r = this.db
+      .prepare(`SELECT * FROM suggestions WHERE item_id = ? AND kind = ? AND status = 'pending' LIMIT 1`)
+      .get(itemId, kind) as Record<string, unknown> | undefined
     return r ? this.rowToSuggestion(r) : null
   }
 

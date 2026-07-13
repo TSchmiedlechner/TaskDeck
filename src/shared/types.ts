@@ -89,6 +89,8 @@ export interface Settings {
   provider: BrainProviderPref
   triageModel: string
   briefingModel: string
+  /** Keep the deck window pinned above other windows */
+  alwaysOnTop: boolean
   /** Electron accelerator string for the global capture hotkey */
   captureHotkey: string
   launchAtLogin: boolean

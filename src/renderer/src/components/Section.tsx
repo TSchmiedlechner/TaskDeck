@@ -35,6 +35,7 @@ export function Section(props: SectionProps): React.JSX.Element {
         {onProcess && (
           <button
             className="process-btn"
+            title="Go through the inbox one item at a time, keyboard-first (T)"
             onClick={(e) => {
               e.stopPropagation()
               onProcess()
@@ -103,52 +104,132 @@ function ItemRow({
           ))}
         </div>
       )}
-      {!isRaw && (
-        <div className="item-actions">
-          <button className="mini-btn" title="Done" onClick={() => void window.taskdeck.completeItem(item.id)}>
-            ✓ done
+      <div className="item-actions">
+        <button
+          className="mini-btn"
+          title="Mark as completed (with mail write-back on, this also marks the mail read)"
+          onClick={() => void window.taskdeck.completeItem(item.id)}
+        >
+          ✓ done
+        </button>
+        {item.bucket !== 'now' && (
+          <button className="mini-btn" title="Move to Now — today's focus list" onClick={() => move('now')}>
+            ↑ now
           </button>
-          {item.bucket !== 'now' && (
-            <button className="mini-btn" onClick={() => move('now')}>
-              ↑ now
-            </button>
-          )}
-          {item.bucket !== 'next' && (
-            <button className="mini-btn" onClick={() => move('next')}>
-              → next
-            </button>
-          )}
+        )}
+        {item.bucket !== 'next' && (
+          <button className="mini-btn" title="Move to Next — the short-term queue" onClick={() => move('next')}>
+            → next
+          </button>
+        )}
+        {item.bucket !== 'someday' && (
           <button
             className="mini-btn"
-            title="Snooze until Monday"
-            onClick={() => {
-              const d = new Date()
-              const days = (8 - d.getDay()) % 7 || 7
-              d.setDate(d.getDate() + days)
-              d.setHours(8, 0, 0, 0)
-              void window.taskdeck
-                .updateItem(item.id, { snoozedUntil: d.toISOString() })
-                .then(() => ctx.showToast('Resurfaces Monday'))
-            }}
+            title="Park in Someday — no commitment, collapsed by default"
+            onClick={() => move('someday')}
           >
-            zz mon
+            ⋯ later
           </button>
-          <button
-            className="mini-btn"
-            title="Delete"
-            style={{ color: 'var(--danger-soft)' }}
-            onClick={() => void window.taskdeck.deleteItem(item.id)}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-      {suggestion && <SuggestionChip ctx={ctx} suggestion={suggestion} />}
+        )}
+        <button
+          className="mini-btn"
+          title="Hide until Monday 08:00, then resurface"
+          onClick={() => {
+            const d = new Date()
+            const days = (8 - d.getDay()) % 7 || 7
+            d.setDate(d.getDate() + days)
+            d.setHours(8, 0, 0, 0)
+            void window.taskdeck
+              .updateItem(item.id, { snoozedUntil: d.toISOString() })
+              .then(() => ctx.showToast('Resurfaces Monday'))
+          }}
+        >
+          zz mon
+        </button>
+        <button
+          className="mini-btn"
+          title="Delete this item for good (a dismissed integration item won't come back)"
+          style={{ color: 'var(--danger-soft)' }}
+          onClick={() => void window.taskdeck.deleteItem(item.id)}
+        >
+          ✕
+        </button>
+      </div>
+      {suggestion && <SuggestionChip ctx={ctx} item={item} suggestion={suggestion} />}
     </div>
   )
 }
 
-function SuggestionChip({ ctx, suggestion }: { ctx: DeckContext; suggestion: Suggestion }): React.JSX.Element {
+/** What each chip does, spelled out for the hover text. */
+export function actionTitle(suggestion: Suggestion, actionId: string): string {
+  const proposal = suggestion.payload as { bucket?: string } | null
+  switch (suggestion.kind) {
+    case 'structure':
+      switch (actionId) {
+        case 'accept':
+          return `Apply the proposal and file it into ${proposal?.bucket ?? 'the suggested bucket'}`
+        case 'accept-now':
+          return 'Accept the proposal, but file it into Now instead'
+        case 'accept-next':
+          return 'Accept the proposal, but file it into Next instead'
+        case 'accept-someday':
+          return 'Accept the proposal, but park it in Someday instead'
+        case 'snooze':
+          return 'Hide until Monday 08:00, then resurface in the inbox'
+        case 'dismiss':
+          return 'Reject and delete this capture (a dismissed integration item won’t come back)'
+      }
+      break
+    case 'staleness':
+      switch (actionId) {
+        case 'kill':
+          return 'Delete the item for good — it was rotting anyway'
+        case 'delegate':
+          return 'Hand it off: moves to Waiting on, you pick who owns it'
+        case 'schedule':
+          return 'Snooze until Monday 08:00'
+        case 'keep':
+          return 'Keep it — resets the staleness clock'
+      }
+      break
+    case 'chase':
+      switch (actionId) {
+        case 'copyDraft':
+          return 'Copy the drafted follow-up to the clipboard and mark this as nudged'
+        case 'keep':
+          return 'Not now — the nudge comes back in a few days'
+      }
+      break
+    case 'now-overflow':
+      switch (actionId) {
+        case 'toNext':
+          return 'Move this item to Next to get Now back under the cap'
+        case 'keep':
+          return 'Keep it in Now — won’t ask again for 24h'
+      }
+      break
+  }
+  return ''
+}
+
+/** Extra one-click filing targets shown on inbox proposals, overriding the suggested bucket. */
+function overrideActions(suggestion: Suggestion, item: Item): SuggestionAction[] {
+  if (suggestion.kind !== 'structure' || item.bucket !== 'inbox') return []
+  const proposal = suggestion.payload as { bucket?: string } | null
+  return (['now', 'next', 'someday'] as const)
+    .filter((b) => b !== proposal?.bucket)
+    .map((b) => ({ id: `accept-${b}`, label: `→ ${b}`, kind: 'ghost' as const }))
+}
+
+function SuggestionChip({
+  ctx,
+  item,
+  suggestion
+}: {
+  ctx: DeckContext
+  item: Item
+  suggestion: Suggestion
+}): React.JSX.Element {
   const [pickingOwner, setPickingOwner] = useState<SuggestionAction | null>(null)
 
   const resolve = async (action: SuggestionAction, owner?: string): Promise<void> => {
@@ -165,6 +246,8 @@ function SuggestionChip({ ctx, suggestion }: { ctx: DeckContext; suggestion: Sug
     setPickingOwner(null)
   }
 
+  const actions = [...suggestion.actions, ...overrideActions(suggestion, item)]
+
   return (
     <div className={`sugg ${suggestion.tone}`}>
       <div className="sugg-text">
@@ -180,8 +263,13 @@ function SuggestionChip({ ctx, suggestion }: { ctx: DeckContext; suggestion: Sug
         />
       ) : (
         <div className="sugg-actions">
-          {suggestion.actions.map((a) => (
-            <button key={a.id} className={`chip-btn ${a.kind}`} onClick={() => void resolve(a)}>
+          {actions.map((a) => (
+            <button
+              key={a.id}
+              className={`chip-btn ${a.kind}`}
+              title={actionTitle(suggestion, a.id)}
+              onClick={() => void resolve(a)}
+            >
               {a.label}
             </button>
           ))}
