@@ -112,6 +112,17 @@ export class Store {
       }
       this.db.exec('PRAGMA user_version = 1')
     }
+
+    // v2: Teams sync switched from "chats you owe a reply" to 👀-reacted messages —
+    // clear the old-style untriaged Teams candidates from the inbox (items already
+    // triaged into a bucket stay; they're real tasks the user accepted).
+    if (version < 2) {
+      this.db.exec(
+        `DELETE FROM suggestions WHERE item_id IN (SELECT id FROM items WHERE source = 'teams' AND bucket = 'inbox')`
+      )
+      this.db.exec(`DELETE FROM items WHERE source = 'teams' AND bucket = 'inbox'`)
+      this.db.exec('PRAGMA user_version = 2')
+    }
   }
 
   // ---- items ----
@@ -142,6 +153,14 @@ export class Store {
   listItems(): Item[] {
     const rows = this.db
       .prepare(`SELECT * FROM items WHERE completed_at IS NULL ORDER BY created_at ASC`)
+      .all() as Record<string, unknown>[]
+    return rows.map((r) => this.rowToItem(r))
+  }
+
+  /** All items including completed ones — connector sync diffs against this so a completed item is never re-added. */
+  listAllItems(): Item[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM items ORDER BY created_at ASC`)
       .all() as Record<string, unknown>[]
     return rows.map((r) => this.rowToItem(r))
   }

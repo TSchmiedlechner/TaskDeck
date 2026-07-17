@@ -9,7 +9,6 @@ export interface GraphMessage {
   receivedDateTime: string
   webLink: string | null
   from?: { emailAddress?: { name?: string; address?: string } }
-  flag?: { flagStatus?: string }
 }
 
 export interface GraphEvent {
@@ -19,24 +18,10 @@ export interface GraphEvent {
   end: { dateTime: string; timeZone: string }
 }
 
-export interface GraphChat {
-  id: string
-  topic: string | null
-  chatType: string
-  viewpoint?: { lastMessageReadDateTime?: string | null }
-  lastMessagePreview?: {
-    id: string
-    createdDateTime: string
-    from?: { user?: { id?: string; displayName?: string } }
-    body?: { content?: string }
-  } | null
-}
-
 export function mailToCandidate(m: GraphMessage): ExternalCandidate {
   const fromName = m.from?.emailAddress?.name ?? m.from?.emailAddress?.address ?? 'unknown sender'
   const fromAddress = m.from?.emailAddress?.address ?? ''
   const subject = m.subject?.trim() || '(no subject)'
-  const flagged = m.flag?.flagStatus === 'flagged'
   const rawText =
     `Email from ${fromName}${fromAddress ? ` <${fromAddress}>` : ''}, received ${m.receivedDateTime}\n` +
     `Subject: ${subject}\n\n${m.bodyPreview ?? ''}`
@@ -44,7 +29,7 @@ export function mailToCandidate(m: GraphMessage): ExternalCandidate {
     externalId: `outlook:${m.id}`,
     title: subject,
     rawText,
-    meta: `outlook · ${fromName} · ${flagged ? 'flagged' : 'unread'}`,
+    meta: `outlook · ${fromName} · flagged`,
     url: m.webLink ?? null,
     // Mails go through AI triage — extracting the actual task from an email is what it's for.
     proposal: null
@@ -66,26 +51,53 @@ export function eventToMeeting(e: GraphEvent): Meeting {
   }
 }
 
-/**
- * A chat you owe a reply to: the last message is newer than your read marker and not
- * from you. Keyed by the message id, so a newer message in the same chat becomes a new
- * candidate (and a dismissed one stays dismissed).
- */
-export function chatToCandidate(chat: GraphChat, myUserId: string): ExternalCandidate | null {
-  const preview = chat.lastMessagePreview
-  if (!preview?.from?.user?.id || preview.from.user.id === myUserId) return null
-  const readAt = chat.viewpoint?.lastMessageReadDateTime
-  if (readAt && readAt >= preview.createdDateTime) return null
+export interface GraphChat {
+  id: string
+  topic: string | null
+  chatType: string
+}
 
-  const sender = preview.from.user.displayName ?? 'someone'
+export interface GraphChatMessage {
+  id: string
+  /** 'message' for user posts; system events use other types */
+  messageType: string
+  createdDateTime: string
+  from?: { user?: { id?: string; displayName?: string } }
+  body?: { content?: string }
+  reactions?: {
+    reactionType?: string
+    /** Set for custom emoji reactions (e.g. "eyes") */
+    displayName?: string
+    user?: { user?: { id?: string } }
+  }[]
+}
+
+const EYES = '👀'
+
+/**
+ * True when *I* reacted 👀 to the message. Custom emoji reactions arrive as the
+ * Unicode character in reactionType (the classic six come as names like 'like');
+ * displayName is matched as a fallback for tenants that report the emoji name.
+ */
+export function hasMyEyesReaction(m: GraphChatMessage, myUserId: string): boolean {
+  return (m.reactions ?? []).some(
+    (r) =>
+      (r.reactionType === EYES || r.displayName?.toLowerCase() === 'eyes') &&
+      r.user?.user?.id === myUserId
+  )
+}
+
+/** A chat message you marked with 👀: an explicit "put this on the deck", like flagging a mail. */
+export function eyesMessageToCandidate(m: GraphChatMessage, chat: GraphChat): ExternalCandidate {
+  const sender = m.from?.user?.displayName ?? 'someone'
   const where = chat.chatType === 'oneOnOne' ? sender : (chat.topic ?? 'group chat')
-  const title = `Reply to ${sender}${chat.chatType !== 'oneOnOne' ? ` in "${where}"` : ''}`
-  const snippet = (preview.body?.content ?? '').replace(/<[^>]+>/g, '').trim().slice(0, 300)
+  const title = `Follow up with ${sender}${chat.chatType !== 'oneOnOne' ? ` in "${where}"` : ''}`
+  const snippet = (m.body?.content ?? '').replace(/<[^>]+>/g, '').trim().slice(0, 300)
   return {
-    externalId: `teams:${preview.id}`,
+    externalId: `teams:${m.id}`,
     title,
-    rawText: `Teams message from ${sender} in ${where}:\n${snippet}`,
-    meta: `teams · ${where}`,
+    rawText: `Teams message from ${sender} in ${where} (marked ${EYES}):\n${snippet}`,
+    meta: `teams · ${where} · ${EYES}`,
     url: `https://teams.microsoft.com/l/chat/${encodeURIComponent(chat.id)}/0`,
     proposal: {
       title,
@@ -94,7 +106,7 @@ export function chatToCandidate(chat: GraphChat, myUserId: string): ExternalCand
       priority: null,
       deadline: null,
       owner: null,
-      extra: 'reply'
+      extra: `${EYES} follow-up`
     }
   }
 }

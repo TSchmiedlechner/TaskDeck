@@ -102,9 +102,9 @@ export interface Settings {
    */
   outlookClientId: string
   outlookTenantId: string
-  /** Sync Teams chats you owe a reply to (needs Chat.Read consent) */
+  /** Sync Teams chat messages you react 👀 to (needs Chat.Read consent) */
   teamsEnabled: boolean
-  /** Write-back: completing a mail item marks the mail read in Outlook */
+  /** Write-back: completing a mail item completes the flag (and marks the mail read) in Outlook */
   writeBackMail: boolean
   jiraSiteUrl: string
   jiraEmail: string

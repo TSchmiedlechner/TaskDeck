@@ -9,26 +9,34 @@ import type { DeviceCodePrompt, Meeting, OutlookState } from '@shared/types'
 import { getEncryptedKv, setEncryptedKv } from './keystore'
 import { applyCandidates } from './connectors/common'
 import {
-  chatToCandidate,
   eventToMeeting,
+  eyesMessageToCandidate,
+  hasMyEyesReaction,
   mailToCandidate,
   type GraphChat,
+  type GraphChatMessage,
   type GraphEvent,
   type GraphMessage
 } from './outlook-map'
 import type { Store } from './store'
 
 // Mail.ReadWrite (superset of Mail.Read) so the optional write-back toggle can mark
-// mails read; the sync itself never writes unless that toggle is on.
+// mails handled; the sync itself never writes unless that toggle is on.
 const SCOPES = ['User.Read', 'Mail.ReadWrite', 'Calendars.Read', 'Chat.Read']
+// Teams 👀 polling window: the N most recently active chats × the M most recently
+// modified messages in each. Reacting bumps a message's lastModifiedDateTime, so even
+// old messages surface when marked. 50 is Graph's max page size for chat messages.
+const TEAMS_CHAT_COUNT = 20
+const TEAMS_MESSAGES_PER_CHAT = 50
 const GRAPH = 'https://graph.microsoft.com/v1.0'
 const SYNC_INTERVAL_MS = 3 * 60_000
 const CACHE_KV = 'msalTokenCache'
 
 /**
- * Read-only Outlook integration (v1): unread/flagged inbox mails become inbox
- * candidates; today's calendar feeds the briefing. Auth is MSAL device-code with
- * the token cache encrypted at rest.
+ * Read-only Outlook/Teams integration: flagged inbox mails and 👀-reacted Teams chat
+ * messages become inbox candidates (flag / react = put it on the deck); today's
+ * calendar feeds the briefing. Auth is MSAL device-code with the token cache
+ * encrypted at rest.
  */
 export class OutlookSync {
   private pca: PublicClientApplication | null = null
@@ -209,47 +217,66 @@ export class OutlookSync {
     }
   }
 
-  /** Write-back (opt-in): mark the mail behind a completed item as read in Outlook. */
-  async markMailRead(externalId: string): Promise<boolean> {
+  /** Write-back (opt-in): complete the flag (and mark read) on the mail behind a completed item. */
+  async markMailHandled(externalId: string): Promise<boolean> {
     const accessToken = await this.token()
     if (!accessToken) return false
     const messageId = externalId.replace(/^outlook:/, '')
     const res = await fetch(`${GRAPH}/me/messages/${encodeURIComponent(messageId)}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isRead: true })
+      body: JSON.stringify({ isRead: true, flag: { flagStatus: 'complete' } })
     })
     return res.ok
   }
 
   private async syncMail(accessToken: string): Promise<void> {
-    // No $orderby here: combining a $filter on isRead/flag with $orderby on
+    // No $orderby here: combining a $filter on flag with $orderby on
     // receivedDateTime makes Graph reject the query as "too complex" on real
     // mailboxes. The default folder order is receivedDateTime desc anyway.
-    const filter = encodeURIComponent("isRead eq false or flag/flagStatus eq 'flagged'")
-    const select = 'id,subject,bodyPreview,receivedDateTime,webLink,from,flag'
+    const filter = encodeURIComponent("flag/flagStatus eq 'flagged'")
+    const select = 'id,subject,bodyPreview,receivedDateTime,webLink,from'
     const data = await this.graphGet<{ value: GraphMessage[] }>(
       accessToken,
       `/me/mailFolders/inbox/messages?$filter=${filter}&$select=${select}&$top=25`
     )
     const newestFirst = [...data.value].sort((a, b) => b.receivedDateTime.localeCompare(a.receivedDateTime))
-    applyCandidates(this.store, 'outlook', newestFirst.map(mailToCandidate), 'handled in Outlook — candidate removed')
+    applyCandidates(this.store, 'outlook', newestFirst.map(mailToCandidate), 'unflagged in Outlook — candidate removed')
   }
 
+  /**
+   * Teams: a chat message you react 👀 to becomes a candidate. Graph has no
+   * "messages I reacted to" query, so this polls a window (recent chats × recently
+   * modified messages — reactions bump lastModifiedDateTime). The `seen` set makes
+   * removal explicit-only: un-reacting removes the candidate, a message merely
+   * falling out of the window does not.
+   */
   private async syncTeams(accessToken: string): Promise<void> {
     if (!this.store.getSettings().teamsEnabled) return
     if (!this.myUserId) {
       const me = await this.graphGet<{ id: string }>(accessToken, '/me?$select=id')
       this.myUserId = me.id
     }
-    const data = await this.graphGet<{ value: GraphChat[] }>(
+    const myUserId = this.myUserId
+    const chats = await this.graphGet<{ value: GraphChat[] }>(
       accessToken,
-      '/me/chats?$expand=lastMessagePreview&$top=20'
+      `/me/chats?$select=id,topic,chatType&$orderby=lastMessagePreview/createdDateTime%20desc&$top=${TEAMS_CHAT_COUNT}`
     )
-    const candidates = data.value
-      .map((chat) => chatToCandidate(chat, this.myUserId!))
-      .filter((c): c is NonNullable<typeof c> => c !== null)
-    applyCandidates(this.store, 'teams', candidates, 'answered in Teams — candidate removed')
+    const matched: ReturnType<typeof eyesMessageToCandidate>[] = []
+    const seen = new Set<string>()
+    // Sequential on purpose: ~20 quick calls beat tripping Graph's chat throttling.
+    for (const chat of chats.value) {
+      const msgs = await this.graphGet<{ value: GraphChatMessage[] }>(
+        accessToken,
+        `/me/chats/${encodeURIComponent(chat.id)}/messages?$top=${TEAMS_MESSAGES_PER_CHAT}`
+      )
+      for (const m of msgs.value) {
+        if (m.messageType !== 'message') continue
+        seen.add(`teams:${m.id}`)
+        if (hasMyEyesReaction(m, myUserId)) matched.push(eyesMessageToCandidate(m, chat))
+      }
+    }
+    applyCandidates(this.store, 'teams', matched, 'unmarked in Teams — candidate removed', seen)
   }
 
   private async syncCalendar(accessToken: string): Promise<void> {
