@@ -359,7 +359,7 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
           {outlook.signedIn && (
             <>
               <div className="setting-row">
-                <span style={{ flex: 1 }}>Teams — chats you owe a reply</span>
+                <span style={{ flex: 1 }}>Teams — messages you react 👀 to</span>
                 <button
                   className="mini-btn"
                   style={{ color: s.teamsEnabled ? 'var(--teal)' : undefined }}
@@ -369,7 +369,7 @@ export function SettingsOverlay({ ctx, onClose }: { ctx: DeckContext; onClose: (
                 </button>
               </div>
               <div className="setting-row">
-                <span style={{ flex: 1 }}>Write-back — completing a mail item marks it read</span>
+                <span style={{ flex: 1 }}>Write-back — completing a mail item completes its flag</span>
                 <button
                   className="mini-btn"
                   style={{ color: s.writeBackMail ? 'var(--teal)' : undefined }}

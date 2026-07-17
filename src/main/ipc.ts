@@ -91,15 +91,15 @@ export function registerIpc(deps: IpcDeps): void {
     if (!item) return
     store.updateItem(id, { completedAt: new Date().toISOString(), bucket: 'done' })
     store.logActivity(id, 'you', `Completed "${item.title}"`)
-    // v3 write-back (opt-in): completing a mail-born item marks the mail read in Outlook.
+    // v3 write-back (opt-in): completing a mail-born item completes the flag in Outlook.
     if (store.getSettings().writeBackMail && item.source === 'outlook' && item.externalId) {
       void outlook
-        .markMailRead(item.externalId)
+        .markMailHandled(item.externalId)
         .then((ok) =>
           store.logActivity(
             id,
             'system',
-            ok ? 'Marked the mail read in Outlook' : 'Could not mark the mail read in Outlook'
+            ok ? 'Completed the mail flag in Outlook' : 'Could not update the mail in Outlook'
           )
         )
     }

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  chatToCandidate,
   eventToMeeting,
+  eyesMessageToCandidate,
+  hasMyEyesReaction,
   mailToCandidate,
   type GraphChat,
+  type GraphChatMessage,
   type GraphMessage
 } from '../src/main/outlook-map'
 import { diffExternalSync } from '../src/main/connectors/common'
@@ -18,7 +20,6 @@ function makeMessage(overrides: Partial<GraphMessage>): GraphMessage {
     receivedDateTime: '2026-07-11T08:15:00Z',
     webLink: 'https://outlook.office365.com/owa/?ItemID=AAMk123',
     from: { emailAddress: { name: 'BMF Auditor', address: 'auditor@bmf.gv.at' } },
-    flag: { flagStatus: 'notFlagged' },
     ...overrides
   }
 }
@@ -30,14 +31,12 @@ describe('mailToCandidate', () => {
     expect(c.title).toBe('RKSV export format')
     expect(c.rawText).toContain('BMF Auditor <auditor@bmf.gv.at>')
     expect(c.rawText).toContain('Subject: RKSV export format')
-    expect(c.meta).toBe('outlook · BMF Auditor · unread')
+    expect(c.meta).toBe('outlook · BMF Auditor · flagged')
     expect(c.url).toContain('outlook.office365.com')
   })
 
-  it('handles flagged mail, missing subject and sender', () => {
-    const c = mailToCandidate(
-      makeMessage({ subject: '  ', from: undefined, flag: { flagStatus: 'flagged' } })
-    )
+  it('handles missing subject and sender', () => {
+    const c = mailToCandidate(makeMessage({ subject: '  ', from: undefined }))
     expect(c.title).toBe('(no subject)')
     expect(c.meta).toBe('outlook · unknown sender · flagged')
   })
@@ -76,43 +75,61 @@ describe('diffExternalSync', () => {
     const { removeIds } = diffExternalSync([], local, [], 'outlook')
     expect(removeIds).toEqual(['untriaged'])
   })
+
+  it('does not resurrect a completed item whose mail is still flagged', () => {
+    // Completed items stay in `local` (bucket done): still-matching entries are
+    // neither re-added nor removed.
+    const local = [{ id: 'done-item', externalId: 'outlook:a', bucket: 'done', source: 'outlook' }]
+    const { addIds, removeIds } = diffExternalSync([candidate('a')], local, [], 'outlook')
+    expect([...addIds]).toEqual([])
+    expect(removeIds).toEqual([])
+  })
+
+  it('with a seen window, removes only candidates observed without a match', () => {
+    // Teams polls a window of recent messages: a candidate seen this sync but no
+    // longer matched was un-reacted (remove); one outside the window is just old (keep).
+    const local = [
+      { id: 'unreacted', externalId: 'teams:in-window', bucket: 'inbox', source: 'teams' },
+      { id: 'out-of-window', externalId: 'teams:old', bucket: 'inbox', source: 'teams' }
+    ]
+    const { removeIds } = diffExternalSync([], local, [], 'teams', new Set(['teams:in-window']))
+    expect(removeIds).toEqual(['unreacted'])
+  })
 })
 
-describe('chatToCandidate', () => {
-  const chat = (overrides: Partial<GraphChat>): GraphChat => ({
-    id: '19:chat',
-    topic: null,
-    chatType: 'oneOnOne',
-    viewpoint: { lastMessageReadDateTime: '2026-07-11T08:00:00Z' },
-    lastMessagePreview: {
-      id: 'msg-1',
-      createdDateTime: '2026-07-11T09:00:00Z',
-      from: { user: { id: 'julia-id', displayName: 'Julia' } },
-      body: { content: '<p>rollout window Friday ok?</p>' }
-    },
+describe('teams 👀 mapping', () => {
+  const chat: GraphChat = { id: '19:chat@thread.v2', topic: null, chatType: 'oneOnOne' }
+  const msg = (overrides: Partial<GraphChatMessage>): GraphChatMessage => ({
+    id: 'msg-1',
+    messageType: 'message',
+    createdDateTime: '2026-07-17T09:00:00Z',
+    from: { user: { id: 'julia-id', displayName: 'Julia' } },
+    body: { content: '<p>rollout window Friday ok?</p>' },
+    reactions: [{ reactionType: '👀', user: { user: { id: 'my-id' } } }],
     ...overrides
   })
 
-  it('flags unread chats from others as reply candidates', () => {
-    const c = chatToCandidate(chat({}), 'my-id')
-    expect(c?.title).toBe('Reply to Julia')
-    expect(c?.externalId).toBe('teams:msg-1')
-    expect(c?.rawText).toContain('rollout window Friday ok?')
-    expect(c?.proposal?.bucket).toBe('next')
+  it('detects my 👀 reaction and nobody else’s', () => {
+    expect(hasMyEyesReaction(msg({}), 'my-id')).toBe(true)
+    expect(hasMyEyesReaction(msg({}), 'other-id')).toBe(false)
+    expect(
+      hasMyEyesReaction(msg({ reactions: [{ reactionType: 'like', user: { user: { id: 'my-id' } } }] }), 'my-id')
+    ).toBe(false)
+    expect(hasMyEyesReaction(msg({ reactions: undefined }), 'my-id')).toBe(false)
   })
 
-  it('skips own messages and already-read chats', () => {
-    expect(
-      chatToCandidate(chat({ lastMessagePreview: { ...chat({}).lastMessagePreview!, from: { user: { id: 'my-id' } } } }), 'my-id')
-    ).toBeNull()
-    expect(
-      chatToCandidate(chat({ viewpoint: { lastMessageReadDateTime: '2026-07-11T10:00:00Z' } }), 'my-id')
-    ).toBeNull()
+  it('maps a 👀-marked message to a follow-up candidate', () => {
+    const c = eyesMessageToCandidate(msg({}), chat)
+    expect(c.externalId).toBe('teams:msg-1')
+    expect(c.title).toBe('Follow up with Julia')
+    expect(c.rawText).toContain('rollout window Friday ok?')
+    expect(c.meta).toBe('teams · Julia · 👀')
+    expect(c.proposal?.bucket).toBe('next')
   })
 
   it('names group chats by topic', () => {
-    const c = chatToCandidate(chat({ chatType: 'group', topic: '#ops' }), 'my-id')
-    expect(c?.title).toBe('Reply to Julia in "#ops"')
+    const c = eyesMessageToCandidate(msg({}), { ...chat, chatType: 'group', topic: '#ops' })
+    expect(c.title).toBe('Follow up with Julia in "#ops"')
   })
 })
 

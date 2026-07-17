@@ -100,13 +100,16 @@ src/renderer  React deck UI (index.html) + capture spotlight (capture.html)
 
 | Source | What lands in the deck | Setup |
 | --- | --- | --- |
-| Outlook mail | unread/flagged inbox mails → AI-triaged candidates | Microsoft sign-in (device code, no app registration — see MANUAL-SETUP.md) |
+| Outlook mail | flagged inbox mails → AI-triaged candidates (flag it = put it on the deck) | Microsoft sign-in (device code, no app registration — see MANUAL-SETUP.md) |
 | Outlook calendar | today's meetings in the briefing | same sign-in |
-| Teams | chats you owe a reply → candidates | same sign-in (toggleable) |
+| Teams | chat messages you react 👀 to → candidates (react = put it on the deck) | same sign-in (toggleable) |
 | GitHub | PRs awaiting your review → *do*; your open PRs → *waiting on* | fine-grained PAT |
 | Jira | open issues assigned to you → candidates (with due dates) | site + email + API token |
-| Write-back (v3, opt-in) | completing a mail item marks the mail read in Outlook | Settings toggle |
+| Write-back (v3, opt-in) | completing a mail item completes the flag (and marks the mail read) in Outlook | Settings toggle |
 
 Integration candidates are deduped by source id, tombstoned when dismissed (they stay gone),
-and auto-removed while untriaged once handled at the source. Structured sources (GitHub, Jira,
-Teams) get deterministic proposals with no AI cost; mails go through AI triage.
+and auto-removed while untriaged once handled at the source (mail: unflagged; Teams: un-reacted).
+Structured sources (GitHub, Jira, Teams) get deterministic proposals with no AI cost; mails go
+through AI triage. Teams polls a window (20 most recent chats × 50 most recently modified
+messages — a reaction bumps a message's modified time, so old messages surface too); only an
+explicit un-react removes a candidate, falling out of the window doesn't.

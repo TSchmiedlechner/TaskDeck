@@ -25,12 +25,18 @@ export const STRUCTURE_ACTIONS: SuggestionAction[] = [
  * - `add`: matched entries not present locally and not tombstoned
  * - `removeIds`: local *untriaged inbox* candidates of this source whose entry no longer
  *   matches (handled at the source) — items already triaged into a bucket are left alone.
+ *
+ * `seenIds` (optional): for connectors that only poll a window of the source (Teams —
+ * recent messages per chat) rather than the full matching set. A candidate is then only
+ * removed when it was *observed* this sync without matching (explicitly un-reacted);
+ * candidates that merely fell out of the window are kept.
  */
 export function diffExternalSync(
   matched: { externalId: string }[],
   local: { id: string; externalId: string | null; bucket: string; source: string }[],
   tombstones: string[],
-  source: string
+  source: string,
+  seenIds?: Set<string>
 ): { addIds: Set<string>; removeIds: string[] } {
   const localExternal = new Set(local.filter((i) => i.externalId).map((i) => i.externalId!))
   const matchedIds = new Set(matched.map((m) => m.externalId))
@@ -42,7 +48,11 @@ export function diffExternalSync(
     removeIds: local
       .filter(
         (i) =>
-          i.source === source && i.bucket === 'inbox' && i.externalId !== null && !matchedIds.has(i.externalId)
+          i.source === source &&
+          i.bucket === 'inbox' &&
+          i.externalId !== null &&
+          !matchedIds.has(i.externalId) &&
+          (seenIds === undefined || seenIds.has(i.externalId))
       )
       .map((i) => i.id)
   }
@@ -53,9 +63,12 @@ export function applyCandidates(
   store: Store,
   source: Item['source'],
   matched: ExternalCandidate[],
-  removedNote: string
+  removedNote: string,
+  seenIds?: Set<string>
 ): boolean {
-  const { addIds, removeIds } = diffExternalSync(matched, store.listItems(), store.tombstones(), source)
+  // Diff against ALL items including completed ones: a completed mail item's flag may
+  // still be set in Outlook, and it must not come back as a fresh candidate.
+  const { addIds, removeIds } = diffExternalSync(matched, store.listAllItems(), store.tombstones(), source, seenIds)
 
   for (const c of matched.filter((m) => addIds.has(m.externalId))) {
     const item = store.createExternalItem({

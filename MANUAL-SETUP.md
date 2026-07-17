@@ -12,15 +12,16 @@ Pick one — the app auto-detects (Settings → Agent → Provider `auto`):
 - [ ] **API key:** create a key at console.anthropic.com and paste it in Settings → Agent →
       API key (stored encrypted via DPAPI). Pay-per-token.
 
-## Microsoft (Outlook mail, calendar, Teams, mail write-back)
+## Microsoft (Outlook mail, calendar, Teams 👀, mail write-back)
 
 - [ ] **Sign in** — Settings → Outlook → *sign in* → enter the device code at
       microsoft.com/devicelogin. No app registration needed: TaskDeck uses Microsoft's
       first-party public client ("Microsoft Graph Command Line Tools",
       `14d82eec-204b-4c2f-b7e8-296a70dab67e`). Consent once to the delegated scopes:
       `Mail.ReadWrite`, `Calendars.Read`, `Chat.Read`, `User.Read`.
-      (`Mail.ReadWrite` is requested so the optional write-back toggle can mark mails read;
-      the sync itself never writes unless you enable that toggle.)
+      (`Mail.ReadWrite` is requested so the optional write-back toggle can complete flags
+      and mark mails read; the sync itself never writes unless you enable that toggle.
+      `Chat.Read` feeds the Teams 👀-reaction sync.)
 
 **Optional — own Entra app registration** (cleaner consent screen, survives tenant policy
 changes that might block the Graph CLI client):
