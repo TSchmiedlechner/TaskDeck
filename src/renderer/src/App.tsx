@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DeckState, Item, Suggestion } from '@shared/types'
-import { isSnoozed } from '@shared/format'
+import { isSnoozed, matchesQuery } from '@shared/format'
 import { Section } from './components/Section'
 import { BriefingOverlay } from './components/BriefingOverlay'
 import { TriageOverlay } from './components/TriageOverlay'
@@ -22,6 +22,8 @@ export default function App(): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ someday: true })
   const [toast, setToast] = useState<string | null>(null)
   const [hovering, setHovering] = useState(false)
+  const [query, setQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(() => {
     void window.taskdeck.getState().then(setState)
@@ -50,6 +52,11 @@ export default function App(): React.JSX.Element {
         return
       }
       if (overlay) return
+      if (e.key === '/') {
+        e.preventDefault()
+        searchRef.current?.focus()
+        return
+      }
       const k = e.key.toLowerCase()
       if (k === 'c') void window.taskdeck.openCapture()
       else if (k === 'b') setOverlay('briefing')
@@ -68,6 +75,13 @@ export default function App(): React.JSX.Element {
   const byBucket = (b: Item['bucket']): Item[] => visible.filter((i) => i.bucket === b)
   const inbox = byBucket('inbox')
   const nowItems = byBucket('now')
+
+  const trimmedQuery = query.trim()
+  const searching = trimmedQuery.length > 0
+  // Search spans snoozed items too, so nothing you parked stays unfindable.
+  const results = searching
+    ? state.items.filter((i) => i.completedAt === null && matchesQuery(i, trimmedQuery))
+    : []
 
   const suggestionsByItem = new Map<string, Suggestion>()
   for (const s of state.suggestions) {
@@ -143,47 +157,83 @@ export default function App(): React.JSX.Element {
         </button>
       </div>
 
+      <div className="deck-search">
+        <span className="deck-search-icon">⌕</span>
+        <input
+          ref={searchRef}
+          className="deck-search-input"
+          placeholder="Search tasks…  ( / )"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation()
+              setQuery('')
+            }
+          }}
+        />
+        {searching && (
+          <button className="icon-btn" title="Clear search (Esc)" onClick={() => setQuery('')}>
+            ✕
+          </button>
+        )}
+      </div>
+
       <div className="deck-body">
-        <Section
-          ctx={ctx}
-          label="Now"
-          labelColor="var(--text)"
-          items={nowItems}
-          countText={`${nowItems.length} / ${state.settings.nowCap}`}
-          countColor={capFull ? 'var(--amber)' : undefined}
-          open={!collapsed.now}
-          onToggle={() => toggle('now')}
-        />
-        <Section
-          ctx={ctx}
-          label="Next"
-          items={byBucket('next')}
-          open={!collapsed.next}
-          onToggle={() => toggle('next')}
-        />
-        <Section
-          ctx={ctx}
-          label="Waiting on"
-          items={byBucket('waiting')}
-          open={!collapsed.waiting}
-          onToggle={() => toggle('waiting')}
-        />
-        <Section
-          ctx={ctx}
-          label="Someday"
-          items={byBucket('someday')}
-          open={!collapsed.someday}
-          onToggle={() => toggle('someday')}
-        />
-        <Section
-          ctx={ctx}
-          label="Inbox"
-          items={inbox}
-          countColor={inbox.length ? 'var(--teal)' : undefined}
-          open={!collapsed.inbox}
-          onToggle={() => toggle('inbox')}
-          onProcess={inbox.length > 0 ? () => setOverlay('triage') : undefined}
-        />
+        {searching ? (
+          <Section
+            ctx={ctx}
+            label="Results"
+            labelColor="var(--text)"
+            items={results}
+            countText={`${results.length} match${results.length === 1 ? '' : 'es'}`}
+            open
+            onToggle={() => {}}
+          />
+        ) : (
+          <>
+            <Section
+              ctx={ctx}
+              label="Now"
+              labelColor="var(--text)"
+              items={nowItems}
+              countText={`${nowItems.length} / ${state.settings.nowCap}`}
+              countColor={capFull ? 'var(--amber)' : undefined}
+              open={!collapsed.now}
+              onToggle={() => toggle('now')}
+            />
+            <Section
+              ctx={ctx}
+              label="Next"
+              items={byBucket('next')}
+              open={!collapsed.next}
+              onToggle={() => toggle('next')}
+            />
+            <Section
+              ctx={ctx}
+              label="Waiting on"
+              items={byBucket('waiting')}
+              open={!collapsed.waiting}
+              onToggle={() => toggle('waiting')}
+            />
+            <Section
+              ctx={ctx}
+              label="Someday"
+              items={byBucket('someday')}
+              open={!collapsed.someday}
+              onToggle={() => toggle('someday')}
+            />
+            <Section
+              ctx={ctx}
+              label="Inbox"
+              items={inbox}
+              countColor={inbox.length ? 'var(--teal)' : undefined}
+              open={!collapsed.inbox}
+              onToggle={() => toggle('inbox')}
+              onProcess={inbox.length > 0 ? () => setOverlay('triage') : undefined}
+            />
+          </>
+        )}
         <div style={{ height: 12 }} />
       </div>
 

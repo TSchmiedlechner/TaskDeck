@@ -8,6 +8,21 @@ export function isSnoozed(item: Item, now: Date): boolean {
   return item.snoozedUntil !== null && new Date(item.snoozedUntil) > now
 }
 
+/**
+ * Full-text match across an item's visible and underlying text. Whitespace-separated
+ * tokens are ANDed, so "julia rollout" matches an item mentioning both. Searches the
+ * rawText too, so a task found by its original email/chat content still surfaces.
+ */
+export function matchesQuery(item: Item, query: string): boolean {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return true
+  const haystack = [item.title, item.meta, item.owner, item.rawText, item.bucket, ...item.links]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return tokens.every((t) => haystack.includes(t))
+}
+
 /** Human chip for the right side of an item row, e.g. "4d", "today", "P1". */
 export function ageChip(item: Item, now: Date): { text: string; warn: boolean } {
   if (item.deadline) {

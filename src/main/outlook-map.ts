@@ -87,26 +87,31 @@ export function hasMyEyesReaction(m: GraphChatMessage, myUserId: string): boolea
   )
 }
 
-/** A chat message you marked with 👀: an explicit "put this on the deck", like flagging a mail. */
+/**
+ * A chat message you marked with 👀: an explicit "put this on the deck", like flagging a mail.
+ * Like mail, it carries `proposal: null` so the AI triage brain reads the actual message text
+ * and composes a meaningful task from it — rather than a canned "follow up with X". The title
+ * here is only a placeholder shown until triage lands (and the offline fallback).
+ */
 export function eyesMessageToCandidate(m: GraphChatMessage, chat: GraphChat): ExternalCandidate {
   const sender = m.from?.user?.displayName ?? 'someone'
   const where = chat.chatType === 'oneOnOne' ? sender : (chat.topic ?? 'group chat')
   const title = `Follow up with ${sender}${chat.chatType !== 'oneOnOne' ? ` in "${where}"` : ''}`
-  const snippet = (m.body?.content ?? '').replace(/<[^>]+>/g, '').trim().slice(0, 300)
+  // Strip HTML, collapse whitespace; keep enough of the message for the AI to extract the task.
+  const snippet = (m.body?.content ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 1500)
   return {
     externalId: `teams:${m.id}`,
     title,
-    rawText: `Teams message from ${sender} in ${where} (marked ${EYES}):\n${snippet}`,
+    rawText:
+      `Teams chat message I marked ${EYES} (meaning: turn this into a task for me).\n` +
+      `From: ${sender}\nWhere: ${where} (${chat.chatType})\n\nMessage:\n${snippet}`,
     meta: `teams · ${where} · ${EYES}`,
     url: `https://teams.microsoft.com/l/chat/${encodeURIComponent(chat.id)}/0`,
-    proposal: {
-      title,
-      type: 'do',
-      bucket: 'next',
-      priority: null,
-      deadline: null,
-      owner: null,
-      extra: `${EYES} follow-up`
-    }
+    // null = let the AI triage it, using the message text above as context.
+    proposal: null
   }
 }

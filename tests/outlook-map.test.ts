@@ -118,13 +118,23 @@ describe('teams 👀 mapping', () => {
     expect(hasMyEyesReaction(msg({ reactions: undefined }), 'my-id')).toBe(false)
   })
 
-  it('maps a 👀-marked message to a follow-up candidate', () => {
+  it('maps a 👀-marked message to a triage candidate (no canned proposal)', () => {
     const c = eyesMessageToCandidate(msg({}), chat)
     expect(c.externalId).toBe('teams:msg-1')
+    // Placeholder title until the AI triages it.
     expect(c.title).toBe('Follow up with Julia')
+    // rawText carries the sender, context and message body so triage can compose a real task.
+    expect(c.rawText).toContain('From: Julia')
     expect(c.rawText).toContain('rollout window Friday ok?')
     expect(c.meta).toBe('teams · Julia · 👀')
-    expect(c.proposal?.bucket).toBe('next')
+    // null proposal => routed through AI triage, like a flagged mail.
+    expect(c.proposal).toBeNull()
+  })
+
+  it('strips HTML from the message body', () => {
+    const c = eyesMessageToCandidate(msg({ body: { content: '<p>ship <b>v2</b> today</p>' } }), chat)
+    expect(c.rawText).toContain('ship v2 today')
+    expect(c.rawText).not.toContain('<')
   })
 
   it('names group chats by topic', () => {
