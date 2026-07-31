@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Item, Suggestion, SuggestionAction } from '@shared/types'
 import { ageChip } from '@shared/format'
 import type { DeckContext } from '../App'
@@ -72,16 +72,60 @@ function ItemRow({
   const chip = ageChip(item, now)
   const isRaw = item.bucket === 'inbox' && item.rawText !== null
   const meta = item.owner && item.bucket === 'waiting' ? `${item.owner} · ${item.meta ?? ''}` : item.meta
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(item.title)
+  // Escape sets this so the blur that follows the unmount commits nothing.
+  const cancelledRef = useRef(false)
 
   const move = (bucket: Item['bucket']): void => {
     void window.taskdeck.updateItem(item.id, { bucket }).then(() => ctx.showToast(`Moved to ${bucket}`))
+  }
+
+  const startEdit = (): void => {
+    cancelledRef.current = false
+    setDraft(item.title)
+    setEditing(true)
+  }
+
+  const commitEdit = (): void => {
+    setEditing(false)
+    if (cancelledRef.current) return
+    const next = draft.trim()
+    if (!next || next === item.title) return
+    void window.taskdeck.updateItem(item.id, { title: next }).then(() => ctx.showToast('Text updated'))
   }
 
   return (
     <div className="item-row">
       <div className="item-main">
         <span className="item-dot" style={{ background: isRaw ? 'var(--text-ghost)' : DOT_COLORS[item.type] }} />
-        <span className={`item-title ${isRaw ? 'raw' : ''}`}>{item.title}</span>
+        {editing ? (
+          <input
+            className="item-title-input"
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitEdit()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                cancelledRef.current = true
+                setEditing(false)
+              }
+            }}
+          />
+        ) : (
+          <span
+            className={`item-title ${isRaw ? 'raw' : ''}`}
+            title="Double-click to edit the text"
+            onDoubleClick={startEdit}
+          >
+            {item.title}
+          </span>
+        )}
         {item.url && (
           <button
             className="icon-btn"
@@ -111,6 +155,13 @@ function ItemRow({
           onClick={() => void window.taskdeck.completeItem(item.id)}
         >
           ✓ done
+        </button>
+        <button
+          className="mini-btn"
+          title="Edit the text — override what the agent suggested"
+          onClick={startEdit}
+        >
+          ✎ edit
         </button>
         {item.bucket !== 'now' && (
           <button className="mini-btn" title="Move to Now — today's focus list" onClick={() => move('now')}>

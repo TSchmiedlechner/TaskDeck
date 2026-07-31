@@ -8,7 +8,7 @@ import {
   resolveProviderId
 } from '../src/main/logic'
 import { extractFirstJson } from '../src/main/providers'
-import { ageChip, daysSince, isSnoozed } from '../src/shared/format'
+import { ageChip, daysSince, isSnoozed, matchesQuery } from '../src/shared/format'
 import type { Item, Settings } from '../src/shared/types'
 
 const SETTINGS: Settings = {
@@ -183,5 +183,47 @@ describe('format helpers', () => {
 
     const p1 = ageChip(makeItem({ priority: 1 }), new Date())
     expect(p1).toEqual({ text: 'P1', warn: true })
+  })
+})
+
+describe('matchesQuery', () => {
+  const item = makeItem({
+    title: 'Reply to auditor about RKSV export',
+    meta: 'outlook · BMF Auditor · flagged',
+    owner: 'Julia',
+    rawText: 'Subject: RKSV export format\n\nHi Tom, could you clarify the rollout window?'
+  })
+
+  it('matches on the title', () => {
+    expect(matchesQuery(item, 'auditor')).toBe(true)
+  })
+
+  it('is case-insensitive', () => {
+    expect(matchesQuery(item, 'RKSV')).toBe(true)
+    expect(matchesQuery(item, 'rksv')).toBe(true)
+  })
+
+  it('searches the underlying rawText, not just the visible title', () => {
+    expect(matchesQuery(item, 'rollout window')).toBe(true)
+  })
+
+  it('ANDs the tokens — every word must appear somewhere', () => {
+    expect(matchesQuery(item, 'auditor rollout')).toBe(true)
+    expect(matchesQuery(item, 'auditor missing')).toBe(false)
+  })
+
+  it('matches the owner', () => {
+    expect(matchesQuery(item, 'julia')).toBe(true)
+  })
+
+  it('an empty query matches everything', () => {
+    expect(matchesQuery(item, '')).toBe(true)
+    expect(matchesQuery(item, '   ')).toBe(true)
+  })
+
+  it('tolerates null fields', () => {
+    const bare = makeItem({ title: 'lone task', meta: null, owner: null, rawText: null })
+    expect(matchesQuery(bare, 'lone')).toBe(true)
+    expect(matchesQuery(bare, 'nope')).toBe(false)
   })
 })

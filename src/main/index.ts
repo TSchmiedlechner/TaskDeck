@@ -17,6 +17,11 @@ let tray: Tray | null = null
 let quitting = false
 let registeredHotkey: string | null = null
 
+// Dev runs get their own userData: a separate single-instance lock (so `npm run dev`
+// works alongside the installed app instead of just focusing it) and a separate DB
+// (so a dev build never writes to the production deck).
+if (!app.isPackaged) app.setPath('userData', `${app.getPath('userData')}-dev`)
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
