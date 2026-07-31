@@ -55,7 +55,10 @@ export interface ModelPricing {
 export const PRICING: Record<string, ModelPricing> = {
   'claude-haiku-4-5': { inputPerMTok: 1.0, outputPerMTok: 5.0 },
   'claude-sonnet-5': { inputPerMTok: 3.0, outputPerMTok: 15.0 },
-  'claude-opus-4-8': { inputPerMTok: 5.0, outputPerMTok: 25.0 }
+  // Opus 4.8 kept for cost rows of not-yet-migrated settings; Opus 5 is a
+  // drop-in successor at the same price.
+  'claude-opus-4-8': { inputPerMTok: 5.0, outputPerMTok: 25.0 },
+  'claude-opus-5': { inputPerMTok: 5.0, outputPerMTok: 25.0 }
 }
 
 export function computeCostUsd(model: string, inputTokens: number, outputTokens: number): number {

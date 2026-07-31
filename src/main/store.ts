@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS: Settings = {
   privacyMode: true,
   provider: 'auto',
   triageModel: 'claude-haiku-4-5',
-  briefingModel: 'claude-opus-4-8',
+  briefingModel: 'claude-opus-5',
   alwaysOnTop: true,
   captureHotkey: 'Control+Shift+Space',
   launchAtLogin: true,
@@ -476,6 +476,9 @@ export class Store {
     // Settings persisted before the public-client default may carry empty ids — fall back.
     if (!merged.outlookClientId) merged.outlookClientId = DEFAULT_SETTINGS.outlookClientId
     if (!merged.outlookTenantId) merged.outlookTenantId = DEFAULT_SETTINGS.outlookTenantId
+    // Opus 4.8 → Opus 5: migrate persisted settings so the model picker stays valid.
+    if (merged.triageModel === 'claude-opus-4-8') merged.triageModel = 'claude-opus-5'
+    if (merged.briefingModel === 'claude-opus-4-8') merged.briefingModel = 'claude-opus-5'
     return merged
   }
 
