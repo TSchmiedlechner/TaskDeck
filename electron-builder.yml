@@ -1,0 +1,15 @@
+appId: eu.schmiedlechner.taskdeck
+productName: TaskDeck
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+win:
+  target: nsis
+  icon: build/icon.ico
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
