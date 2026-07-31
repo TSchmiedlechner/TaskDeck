@@ -72,7 +72,7 @@ The API key can be entered on the Settings page (stored encrypted via Windows DP
 `safeStorage`) or provided via the `ANTHROPIC_API_KEY` environment variable; a settings-stored key
 wins. CLI calls strip `ANTHROPIC_API_KEY` from the child environment so they always bill against
 the subscription, never the key. Triage and briefing models are selectable in Settings
-(defaults: Haiku 4.5 for triage, Opus 4.8 for the briefing).
+(defaults: Haiku 4.5 for triage, Opus 5 for the briefing).
 
 ## Development flow
 
@@ -93,7 +93,7 @@ src/renderer  React deck UI (index.html) + capture spotlight (capture.html)
   scans (staleness, chase, Now overflow) locally at no API cost.
 - All mutations go through the main process; renderers are stateless views over `state:get` +
   a `state-changed` push.
-- Models: `claude-haiku-4-5` for triage, `claude-opus-4-8` for the briefing. Structured outputs
+- Models: `claude-haiku-4-5` for triage, `claude-opus-5` for the briefing. Structured outputs
   via `messages.parse()` + Zod schemas.
 
 ## Integrations (all read-only unless noted)
@@ -109,7 +109,7 @@ src/renderer  React deck UI (index.html) + capture spotlight (capture.html)
 
 Integration candidates are deduped by source id, tombstoned when dismissed (they stay gone),
 and auto-removed while untriaged once handled at the source (mail: unflagged; Teams: un-reacted).
-Structured sources (GitHub, Jira, Teams) get deterministic proposals with no AI cost; mails go
-through AI triage. Teams polls a window (20 most recent chats × 50 most recently modified
+Structured sources (GitHub, Jira) get deterministic proposals with no AI cost; mails and Teams
+messages go through AI triage. Teams polls a window (20 most recent chats × 50 most recently modified
 messages — a reaction bumps a message's modified time, so old messages surface too); only an
 explicit un-react removes a candidate, falling out of the window doesn't.

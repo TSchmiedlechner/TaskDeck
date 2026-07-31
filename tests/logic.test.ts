@@ -18,7 +18,7 @@ const SETTINGS: Settings = {
   privacyMode: true,
   provider: 'auto',
   triageModel: 'claude-haiku-4-5',
-  briefingModel: 'claude-opus-4-8',
+  briefingModel: 'claude-opus-5',
   alwaysOnTop: true,
   captureHotkey: 'Control+Shift+Space',
   launchAtLogin: true,
@@ -126,6 +126,8 @@ describe('cost', () => {
   it('computes haiku and opus pricing per MTok', () => {
     expect(computeCostUsd('claude-haiku-4-5', 1_000_000, 0)).toBeCloseTo(1.0)
     expect(computeCostUsd('claude-haiku-4-5', 0, 1_000_000)).toBeCloseTo(5.0)
+    expect(computeCostUsd('claude-opus-5', 100_000, 10_000)).toBeCloseTo(0.75)
+    // Legacy id keeps pricing for not-yet-migrated settings
     expect(computeCostUsd('claude-opus-4-8', 100_000, 10_000)).toBeCloseTo(0.75)
     expect(computeCostUsd('unknown-model', 1000, 1000)).toBe(0)
   })

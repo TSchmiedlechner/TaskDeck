@@ -145,7 +145,7 @@ export interface ModelOption {
 export const MODEL_OPTIONS: ModelOption[] = [
   { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
   { id: 'claude-sonnet-5', label: 'Sonnet 5' },
-  { id: 'claude-opus-4-8', label: 'Opus 4.8' }
+  { id: 'claude-opus-5', label: 'Opus 5' }
 ]
 
 export interface CostSummary {
