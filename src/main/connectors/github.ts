@@ -119,7 +119,10 @@ export class GithubSync {
         ...reviewRequests.filter((p) => !p.draft).map(reviewRequestToCandidate),
         ...ownPrs.filter((p) => !p.draft).map(ownPrToCandidate)
       ]
-      const changed = applyCandidates(this.store, 'github', candidates, 'resolved on GitHub — candidate removed')
+      const changed = applyCandidates(this.store, 'github', candidates, {
+        removed: 'resolved on GitHub — candidate removed',
+        resolved: 'No longer open on GitHub — merged or closed.'
+      })
       this.lastSync = new Date().toISOString()
       this.lastError = null
       if (changed) this.notify()

@@ -241,7 +241,10 @@ export class OutlookSync {
       `/me/mailFolders/inbox/messages?$filter=${filter}&$select=${select}&$top=25`
     )
     const newestFirst = [...data.value].sort((a, b) => b.receivedDateTime.localeCompare(a.receivedDateTime))
-    applyCandidates(this.store, 'outlook', newestFirst.map(mailToCandidate), 'unflagged in Outlook — candidate removed')
+    applyCandidates(this.store, 'outlook', newestFirst.map(mailToCandidate), {
+      removed: 'unflagged in Outlook — candidate removed',
+      resolved: 'The mail behind this is no longer flagged in Outlook.'
+    })
   }
 
   /**
@@ -276,7 +279,16 @@ export class OutlookSync {
         if (hasMyEyesReaction(m, myUserId)) matched.push(eyesMessageToCandidate(m, chat))
       }
     }
-    applyCandidates(this.store, 'teams', matched, 'unmarked in Teams — candidate removed', seen)
+    applyCandidates(
+      this.store,
+      'teams',
+      matched,
+      {
+        removed: 'unmarked in Teams — candidate removed',
+        resolved: 'The 👀 reaction on this Teams message is gone.'
+      },
+      seen
+    )
   }
 
   private async syncCalendar(accessToken: string): Promise<void> {

@@ -360,6 +360,19 @@ function applySuggestionAction(deps: IpcDeps, suggId: string, actionId: string, 
       }
       break
     }
+    case 'resolved': {
+      if (actionId === 'done') {
+        // No mail write-back here: the source already told us it's resolved, so
+        // there is nothing left to complete on its side.
+        store.updateItem(item.id, { completedAt: new Date().toISOString(), bucket: 'done' })
+        store.resolveSuggestion(suggId, 'accepted', actionId)
+        store.logActivity(item.id, 'you', `Completed "${item.title}" (resolved at the source)`)
+      } else {
+        store.resolveSuggestion(suggId, 'rejected', actionId)
+        store.logActivity(item.id, 'you', 'Kept it open although the source resolved')
+      }
+      break
+    }
     case 'now-overflow': {
       if (actionId === 'toNext') {
         store.updateItem(item.id, { bucket: 'next' })

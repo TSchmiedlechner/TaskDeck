@@ -371,6 +371,18 @@ export class Store {
     return r !== undefined
   }
 
+  /**
+   * True if a suggestion of this kind was *ever* rejected for the item — a permanent
+   * "don't ask again". Used where the trigger can't recur (a merged PR stays merged),
+   * so a time-boxed suppression would just nag forever.
+   */
+  everRejected(itemId: string, kind: SuggestionKind): boolean {
+    const r = this.db
+      .prepare(`SELECT 1 FROM suggestions WHERE item_id = ? AND kind = ? AND status = 'rejected'`)
+      .get(itemId, kind)
+    return r !== undefined
+  }
+
   createSuggestion(
     itemId: string,
     kind: SuggestionKind,
@@ -394,6 +406,11 @@ export class Store {
     this.db
       .prepare(`UPDATE suggestions SET status = ?, resolved_at = ?, resolved_action = ? WHERE id = ?`)
       .run(status, new Date().toISOString(), actionId, id)
+  }
+
+  /** Drop a suggestion without recording a verdict — the reason for asking disappeared. */
+  deleteSuggestion(id: string): void {
+    this.db.prepare(`DELETE FROM suggestions WHERE id = ?`).run(id)
   }
 
   /** Recently rejected structure proposals — fed back into the triage prompt so the agent learns. */

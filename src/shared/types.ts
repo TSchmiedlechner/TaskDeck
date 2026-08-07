@@ -31,7 +31,7 @@ export interface Item {
   lastNudgeAt: string | null
 }
 
-export type SuggestionKind = 'structure' | 'staleness' | 'chase' | 'now-overflow'
+export type SuggestionKind = 'structure' | 'staleness' | 'chase' | 'now-overflow' | 'resolved'
 export type SuggestionTone = 'ai' | 'warn'
 
 export interface SuggestionAction {
