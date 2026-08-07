@@ -251,6 +251,14 @@ export function actionTitle(suggestion: Suggestion, actionId: string): string {
           return 'Not now — the nudge comes back in a few days'
       }
       break
+    case 'resolved':
+      switch (actionId) {
+        case 'done':
+          return 'Mark it done — the PR, issue, mail or message behind it is already resolved'
+        case 'keep':
+          return 'Keep it open — won’t ask again for this item'
+      }
+      break
     case 'now-overflow':
       switch (actionId) {
         case 'toNext':

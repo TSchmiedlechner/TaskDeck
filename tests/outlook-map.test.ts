@@ -65,15 +65,17 @@ describe('diffExternalSync', () => {
     expect([...addIds]).toEqual(['outlook:b'])
   })
 
-  it('removes untriaged candidates of the same source only, keeps triaged items', () => {
+  it('drops untriaged candidates of the same source, flags triaged ones as resolved', () => {
     const local = [
       { id: 'untriaged', externalId: 'outlook:gone', bucket: 'inbox', source: 'outlook' },
       { id: 'triaged', externalId: 'outlook:also-gone', bucket: 'next', source: 'outlook' },
       { id: 'other-source', externalId: 'github:x', bucket: 'inbox', source: 'github' },
       { id: 'manual', externalId: null, bucket: 'inbox', source: 'capture' }
     ]
-    const { removeIds } = diffExternalSync([], local, [], 'outlook')
+    const { removeIds, resolvedIds } = diffExternalSync([], local, [], 'outlook')
     expect(removeIds).toEqual(['untriaged'])
+    // Triaged items are never deleted — they only earn a "mark done?" chip.
+    expect(resolvedIds).toEqual(['triaged'])
   })
 
   it('does not resurrect a completed item whose mail is still flagged', () => {
@@ -85,6 +87,22 @@ describe('diffExternalSync', () => {
     expect(removeIds).toEqual([])
   })
 
+  it('never asks about an already-completed item', () => {
+    const local = [
+      { id: 'by-bucket', externalId: 'outlook:a', bucket: 'done', source: 'outlook' },
+      {
+        id: 'by-timestamp',
+        externalId: 'outlook:b',
+        bucket: 'next',
+        source: 'outlook',
+        completedAt: '2026-08-01T10:00:00Z'
+      }
+    ]
+    const { removeIds, resolvedIds } = diffExternalSync([], local, [], 'outlook')
+    expect(removeIds).toEqual([])
+    expect(resolvedIds).toEqual([])
+  })
+
   it('with a seen window, removes only candidates observed without a match', () => {
     // Teams polls a window of recent messages: a candidate seen this sync but no
     // longer matched was un-reacted (remove); one outside the window is just old (keep).
@@ -94,6 +112,17 @@ describe('diffExternalSync', () => {
     ]
     const { removeIds } = diffExternalSync([], local, [], 'teams', new Set(['teams:in-window']))
     expect(removeIds).toEqual(['unreacted'])
+  })
+
+  it('the seen window guards the resolved chip too', () => {
+    // A triaged Teams item whose message fell out of the poll window must not be
+    // reported as resolved — only an explicitly un-reacted one is.
+    const local = [
+      { id: 'unreacted', externalId: 'teams:in-window', bucket: 'waiting', source: 'teams' },
+      { id: 'out-of-window', externalId: 'teams:old', bucket: 'waiting', source: 'teams' }
+    ]
+    const { resolvedIds } = diffExternalSync([], local, [], 'teams', new Set(['teams:in-window']))
+    expect(resolvedIds).toEqual(['unreacted'])
   })
 })
 

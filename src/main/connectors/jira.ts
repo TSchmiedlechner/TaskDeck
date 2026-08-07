@@ -86,7 +86,10 @@ export class JiraSync {
       if (!res.ok) throw new Error(`Jira search returned ${res.status}`)
       const data = (await res.json()) as { issues: JiraIssue[] }
       const candidates = data.issues.map((i) => issueToCandidate(i, config.siteUrl))
-      const changed = applyCandidates(this.store, 'jira', candidates, 'resolved in Jira — candidate removed')
+      const changed = applyCandidates(this.store, 'jira', candidates, {
+        removed: 'resolved in Jira — candidate removed',
+        resolved: 'Done in Jira — or no longer assigned to you.'
+      })
       this.lastSync = new Date().toISOString()
       this.lastError = null
       if (changed) this.notify()

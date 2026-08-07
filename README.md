@@ -127,10 +127,13 @@ are selectable in Settings (defaults: Haiku 4.5 for triage, Opus 5 for the brief
 | Jira | open issues assigned to you → candidates (with due dates) | site + email + API token |
 | Write-back (opt-in) | completing a mail item completes the flag (and marks the mail read) in Outlook | Settings toggle |
 
-Integration candidates are deduped by source id, tombstoned when dismissed (they stay
-gone), and auto-removed while untriaged once handled at the source (mail: unflagged;
-Teams: un-reacted). Structured sources (GitHub, Jira) get deterministic proposals with no
-AI cost; mails and Teams messages go through AI triage.
+Integration candidates are deduped by source id and tombstoned when dismissed (they stay
+gone). When an entry is handled at the source — PR merged or closed, Jira issue done, mail
+unflagged, 👀 removed — a still-untriaged candidate is dropped silently, while an item you
+already filed into a bucket gets a *"mark done?"* chip instead of being auto-closed. Say
+Keep once and it won't ask again; if the entry comes back (PR reopened, mail re-flagged)
+the chip is withdrawn. Structured sources (GitHub, Jira) get deterministic proposals with
+no AI cost; mails and Teams messages go through AI triage.
 
 ## Architecture
 
